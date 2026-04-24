@@ -15,6 +15,7 @@ export default function FeesScreen({ navigation }) {
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState('all');
   const [selected, setSelected] = useState(null);
+  const [feeForm, setFeeForm] = useState(null);
   const [updating, setUpdating] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -53,6 +54,45 @@ export default function FeesScreen({ navigation }) {
       if (!res.ok) throw new Error(data.detail || 'Failed to update');
       Alert.alert('✅ Updated', 'Fee marked as paid');
       setSelected(null);
+      setFeeForm(null);
+      load();
+    } catch (e) { Alert.alert('Error', e.message); }
+    finally { setUpdating(false); }
+  };
+
+  const handleSelectFee = (fee) => {
+    setSelected(fee);
+    setFeeForm({
+      amount: fee.amount != null ? String(fee.amount) : '',
+      paid_amount: fee.paid_amount != null ? String(fee.paid_amount) : '',
+      status: fee.status || 'pending',
+      due_date: fee.due_date || '',
+      remarks: fee.remarks || '',
+    });
+  };
+
+  const updateFee = async () => {
+    if (!selected) return;
+    if (!feeForm?.amount) return Alert.alert('Required', 'Amount is required');
+    setUpdating(true);
+    try {
+      const token = await AsyncStorage.getItem('token');
+      const res = await fetch(`${BASE}/fees/${selected.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          amount: Number(feeForm.amount),
+          paid_amount: feeForm.paid_amount ? Number(feeForm.paid_amount) : 0,
+          status: feeForm.status,
+          due_date: feeForm.due_date,
+          remarks: feeForm.remarks,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to update fee');
+      Alert.alert('✅ Updated', 'Fee record updated successfully');
+      setSelected(null);
+      setFeeForm(null);
       load();
     } catch (e) { Alert.alert('Error', e.message); }
     finally { setUpdating(false); }
@@ -112,7 +152,7 @@ export default function FeesScreen({ navigation }) {
   if (error) return <ErrorScreen message={error} onRetry={load} />;
 
   const displayed = filter === 'all' ? fees : fees.filter(f => f.status === filter);
-  const statusColor = s => s === 'paid' ? colors.success : s === 'overdue' ? colors.error : '#FF9800';
+  const statusColor = s => s === 'paid' ? colors.success : s === 'defaulter' ? colors.error : s === 'overdue' ? colors.error : s === 'not_paid' ? colors.primary : '#FF9800';
 
   return (
     <View style={styles.container}>
@@ -149,10 +189,10 @@ export default function FeesScreen({ navigation }) {
       )}
 
       <View style={styles.filterRow}>
-        {['all', 'paid', 'pending', 'overdue'].map(f => (
+        {['all', 'paid', 'pending', 'overdue', 'not_paid', 'defaulter'].map(f => (
           <TouchableOpacity key={f} style={[styles.filterBtn, filter === f && styles.filterBtnActive]} onPress={() => setFilter(f)}>
             <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>
-              {f.charAt(0).toUpperCase() + f.slice(1)}
+              {f === 'not_paid' ? 'Not Paid' : f === 'defaulter' ? 'Defaulter' : f.charAt(0).toUpperCase() + f.slice(1)}
             </Text>
           </TouchableOpacity>
         ))}
@@ -164,7 +204,7 @@ export default function FeesScreen({ navigation }) {
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />}
         renderItem={({ item }) => (
-          <TouchableOpacity style={styles.card} onPress={() => setSelected(item)} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.card} onPress={() => handleSelectFee(item)} activeOpacity={0.8}>
             <View style={styles.info}>
               <Text style={styles.studentName}>{item.student_name}</Text>
               <Text style={styles.sub}>Roll: {item.roll_number}</Text>
@@ -221,39 +261,76 @@ export default function FeesScreen({ navigation }) {
         </View>
       </Modal>
 
-      <Modal visible={!!selected} animationType="slide" transparent onRequestClose={() => setSelected(null)}>
+      <Modal visible={!!selected} animationType="slide" transparent onRequestClose={() => { setSelected(null); setFeeForm(null); }}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{selected?.student_name}</Text>
-              <TouchableOpacity onPress={() => setSelected(null)}>
+              <TouchableOpacity onPress={() => { setSelected(null); setFeeForm(null); }}>
                 <Text style={styles.modalClose}>✕</Text>
               </TouchableOpacity>
             </View>
-            <ScrollView>
+            <ScrollView keyboardShouldPersistTaps="handled">
               {[
-                ['Roll Number', selected?.roll_number],
-                ['Month', `${selected?.month} ${selected?.year}`],
-                ['Amount', `Rs. ${selected?.amount?.toLocaleString()}`],
-                ['Paid', `Rs. ${selected?.paid_amount?.toLocaleString() ?? 0}`],
-                ['Status', selected?.status?.toUpperCase()],
-                ['Due Date', selected?.due_date?.split('T')[0]],
-                ['Remarks', selected?.remarks],
-              ].filter(([, v]) => v).map(([label, value]) => (
-                <View key={label} style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>{label}</Text>
-                  <Text style={styles.detailValue}>{value}</Text>
+                ['Roll Number', 'roll_number', 'default', selected?.roll_number],
+                ['Month', 'month', 'default', feeForm?.month],
+                ['Year', 'year', 'numeric', feeForm?.year],
+                ['Amount', 'amount', 'numeric', feeForm?.amount],
+                ['Paid Amount', 'paid_amount', 'numeric', feeForm?.paid_amount],
+                ['Due Date', 'due_date', 'default', feeForm?.due_date],
+              ].map(([label, key, keyboardType, value]) => (
+                <View key={key}>
+                  <Text style={styles.formLabel}>{label}</Text>
+                  {key === 'roll_number' ? (
+                    <Text style={styles.detailValue}>{value}</Text>
+                  ) : (
+                    <TextInput
+                      style={styles.formInput}
+                      value={value ?? ''}
+                      onChangeText={v => setFeeForm(prev => ({ ...prev, [key]: v }))}
+                      placeholder={label}
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType={keyboardType}
+                      autoCapitalize="none"
+                    />
+                  )}
                 </View>
               ))}
+
+              <View style={styles.packageRow}>
+                {['paid', 'not_paid', 'overdue', 'defaulter'].map((status) => (
+                  <TouchableOpacity
+                    key={status}
+                    style={[styles.statusOption, feeForm?.status === status && styles.statusOptionActive]}
+                    onPress={() => setFeeForm(prev => ({ ...prev, status }))}
+                  >
+                    <Text style={[styles.statusOptionText, feeForm?.status === status && styles.statusOptionTextActive]}>
+                      {status === 'not_paid' ? 'Not Paid' : status.charAt(0).toUpperCase() + status.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.formLabel}>Remarks</Text>
+              <TextInput
+                style={[styles.formInput, { minHeight: 100, textAlignVertical: 'top' }]}
+                value={feeForm?.remarks || ''}
+                onChangeText={v => setFeeForm(prev => ({ ...prev, remarks: v }))}
+                placeholder="Remarks"
+                placeholderTextColor={colors.textMuted}
+                multiline
+              />
+
+              <TouchableOpacity style={styles.saveBtn} onPress={updateFee} disabled={updating}>
+                <Text style={styles.saveBtnText}>{updating ? 'Updating...' : 'Update Fee'}</Text>
+              </TouchableOpacity>
               {selected?.status !== 'paid' && (
                 <TouchableOpacity
-                  style={styles.payBtn}
+                  style={[styles.saveBtn, { backgroundColor: colors.success, marginTop: spacing.sm }]}
                   onPress={() => markAsPaid(selected)}
                   disabled={updating}
                 >
-                  {updating
-                    ? <ActivityIndicator color="#fff" />
-                    : <Text style={styles.payBtnText}>✅ Mark as Paid</Text>}
+                  <Text style={styles.saveBtnText}>{updating ? 'Updating...' : 'Mark as Paid'}</Text>
                 </TouchableOpacity>
               )}
             </ScrollView>
@@ -303,4 +380,9 @@ const styles = StyleSheet.create({
   formInput: { backgroundColor: colors.background, borderRadius: 10, borderWidth: 1, borderColor: colors.border, padding: 12, color: colors.text, fontSize: 14 },
   saveBtn: { backgroundColor: colors.primary, borderRadius: 12, padding: 14, alignItems: 'center', marginTop: spacing.lg },
   saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  packageRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: spacing.md },
+  statusOption: { paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, marginBottom: spacing.xs },
+  statusOptionActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  statusOptionText: { color: colors.text, fontSize: 12, fontWeight: '600' },
+  statusOptionTextActive: { color: '#fff' },
 });

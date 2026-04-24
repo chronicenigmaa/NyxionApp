@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, TextInput, RefreshControl } from 'react-native';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, TextInput, RefreshControl, Modal, ScrollView, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, fonts } from '../../constants/theme';
 import LoadingScreen from '../../components/LoadingScreen';
@@ -191,19 +191,27 @@ export default function TeachersScreen({ navigation }) {
               <Text style={styles.modalTitle}>{selected?.full_name}</Text>
               <TouchableOpacity onPress={() => setSelected(null)}><Text style={styles.modalClose}>✕</Text></TouchableOpacity>
             </View>
-            <ScrollView>
+            <ScrollView keyboardShouldPersistTaps="handled">
               {[
-                ['Name', selected?.full_name],
-                ['Email', selected?.email],
-                ['Subject', selected?.subject],
-                ['Qualification', selected?.qualification],
-                ['Class', selected?.class_name],
-                ['Section', selected?.section],
-                ['Salary', selected?.salary ? `Rs. ${selected.salary}` : null],
-              ].filter(([, v]) => v).map(([label, value]) => (
-                <View key={label} style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>{label}</Text>
-                  <Text style={styles.detailValue}>{value}</Text>
+                ['Name *', 'full_name', 'default'],
+                ['Email *', 'email', 'email-address'],
+                ['Subject', 'subject', 'default'],
+                ['Qualification', 'qualification', 'default'],
+                ['Class', 'class_name', 'default'],
+                ['Section', 'section', 'default'],
+                ['Salary', 'salary', 'numeric'],
+              ].map(([label, key, keyboardType]) => (
+                <View key={key}>
+                  <Text style={styles.formLabel}>{label}</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={selected?.[key] ? String(selected?.[key]) : ''}
+                    onChangeText={v => setSelected(prev => ({ ...prev, [key]: v }))}
+                    placeholder={label.replace(' *', '')}
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType={keyboardType}
+                    autoCapitalize={key === 'email' ? 'none' : 'words'}
+                  />
                 </View>
               ))}
               <View style={styles.actionRow}>
