@@ -14,6 +14,7 @@ import LoadingScreen from '../../components/LoadingScreen';
 import ErrorScreen from '../../components/ErrorScreen';
 import ScreenHeader from '../../components/ScreenHeader';
 import SelectField from '../../components/SelectField';
+import { learn } from '../../services/api';
 
 const BASE = 'https://nyxion-learnspace-production.up.railway.app/api/v1';
 const BASE_URL = 'https://nyxion-learnspace-production.up.railway.app';
@@ -162,16 +163,8 @@ export default function NotesScreen({ navigation, route }) {
     if (!newNote.title || !newNote.class_name) return Alert.alert('Required', 'Title and class are required');
     setSavingNote(true);
     try {
-      const token = await AsyncStorage.getItem('learn_token');
       const payload = buildNotePayload(newNote, noteFiles);
-
-      const res = await fetch(`${BASE}/notes/`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, ...payload.headers },
-        body: payload.body,
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail || data.message || 'Failed to publish note');
+      await learn.write('/notes', { method: 'POST', body: payload.body, headers: payload.headers });
       Alert.alert('Published', 'Note posted successfully');
       setShowCreate(false);
       setNewNote(EMPTY_NOTE);
@@ -197,24 +190,13 @@ export default function NotesScreen({ navigation, route }) {
     if (!editingNote?.title || !editingNote?.class_name) return Alert.alert('Required', 'Title and class are required');
     setSavingNote(true);
     try {
-      const token = await AsyncStorage.getItem('learn_token');
       const payload = buildNotePayload(editingNote, editingFiles);
-
-      let res = await fetch(`${BASE}/notes/${editingNote.id}`, {
+      await learn.write(`/notes/${editingNote.id}`, {
         method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}`, ...payload.headers },
         body: payload.body,
+        headers: payload.headers,
+        fallbackMethods: ['PUT'],
       });
-      if (res.status === 405) {
-        const retryPayload = buildNotePayload(editingNote, editingFiles);
-        res = await fetch(`${BASE}/notes/${editingNote.id}`, {
-          method: 'PUT',
-          headers: { Authorization: `Bearer ${token}`, ...retryPayload.headers },
-          body: retryPayload.body,
-        });
-      }
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail || data.message || 'Failed to update note');
       Alert.alert('Updated', 'Note updated successfully');
       setEditingNote(null);
       setEditingFiles([]);

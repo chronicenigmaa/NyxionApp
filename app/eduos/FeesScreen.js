@@ -6,6 +6,7 @@ import LoadingScreen from '../../components/LoadingScreen';
 import ErrorScreen from '../../components/ErrorScreen';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import SelectField from '../../components/SelectField';
+import { eduos } from '../../services/api';
 
 const BASE = 'https://nyxion-eduos-production-63b9.up.railway.app/api/v1';
 const MONTH_OPTIONS = [
@@ -13,6 +14,21 @@ const MONTH_OPTIONS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ].map((month) => ({ label: month, value: month }));
 const YEAR_OPTIONS = ['2024', '2025', '2026', '2027', '2028'].map((year) => ({ label: year, value: year }));
+const DAY_OPTIONS = Array.from({ length: 31 }, (_, i) => ({ label: String(i + 1), value: String(i + 1).padStart(2, '0') }));
+const DUE_MONTH_OPTIONS = [
+  { label: 'Jan', value: '01' },
+  { label: 'Feb', value: '02' },
+  { label: 'Mar', value: '03' },
+  { label: 'Apr', value: '04' },
+  { label: 'May', value: '05' },
+  { label: 'Jun', value: '06' },
+  { label: 'Jul', value: '07' },
+  { label: 'Aug', value: '08' },
+  { label: 'Sep', value: '09' },
+  { label: 'Oct', value: '10' },
+  { label: 'Nov', value: '11' },
+  { label: 'Dec', value: '12' },
+];
 
 const EMPTY_FORM = {
   student_id: '',
@@ -41,6 +57,8 @@ export default function FeesScreen({ navigation }) {
   const [showAdd, setShowAdd] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [datePicker, setDatePicker] = useState({ open: false, field: 'form' });
+  const [datePickerValue, setDatePickerValue] = useState({ day: '01', month: '01', year: '2026' });
 
   useEffect(() => { load(); }, []);
 
@@ -93,17 +111,44 @@ export default function FeesScreen({ navigation }) {
     }));
   };
 
+  const parseDateParts = (value) => {
+    if (!value) {
+      const now = new Date();
+      return {
+        day: String(now.getDate()).padStart(2, '0'),
+        month: String(now.getMonth() + 1).padStart(2, '0'),
+        year: String(now.getFullYear()),
+      };
+    }
+    const [year, month, day] = value.split('-');
+    return {
+      day: String(day || '01').padStart(2, '0'),
+      month: String(month || '01').padStart(2, '0'),
+      year: String(year || '2026'),
+    };
+  };
+
+  const openDatePicker = (field) => {
+    const currentValue = field === 'form' ? form.due_date : feeForm?.due_date;
+    const dateParts = parseDateParts(currentValue);
+    setDatePickerValue(dateParts);
+    setDatePicker({ open: true, field });
+  };
+
+  const confirmDatePicker = () => {
+    const dueDate = `${datePickerValue.year}-${datePickerValue.month}-${datePickerValue.day}`;
+    if (datePicker.field === 'form') {
+      setForm((prev) => ({ ...prev, due_date: dueDate }));
+    } else {
+      setFeeForm((prev) => ({ ...(prev || {}), due_date: dueDate }));
+    }
+    setDatePicker((prev) => ({ ...prev, open: false }));
+  };
+
   const markAsPaid = async (fee) => {
     setUpdating(true);
     try {
-      const token = await AsyncStorage.getItem('token');
-      const res = await fetch(`${BASE}/fees/${fee.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ paid_amount: fee.amount, status: 'paid', remarks: 'Marked as paid via app' }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Failed to update');
+      await eduos.patch(`/fees/${fee.id}`, { paid_amount: fee.amount, status: 'paid', remarks: 'Marked as paid via app' });
       Alert.alert('Updated', 'Fee marked as paid');
       setSelected(null);
       setFeeForm(null);
@@ -133,24 +178,18 @@ export default function FeesScreen({ navigation }) {
     if (!feeForm?.amount || !feeForm?.student_name) return Alert.alert('Required', 'Student and amount are required');
     setUpdating(true);
     try {
-      const token = await AsyncStorage.getItem('token');
-      const res = await fetch(`${BASE}/fees/${selected.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          student_name: feeForm.student_name,
-          roll_number: feeForm.roll_number,
-          month: feeForm.month,
-          year: feeForm.year ? Number(feeForm.year) : undefined,
-          amount: Number(feeForm.amount),
-          paid_amount: feeForm.paid_amount ? Number(feeForm.paid_amount) : 0,
-          status: feeForm.status,
-          due_date: feeForm.due_date,
-          remarks: feeForm.remarks,
-        }),
+      await eduos.patch(`/fees/${selected.id}`, {
+        student_id: feeForm.student_id || undefined,
+        student_name: feeForm.student_name,
+        roll_number: feeForm.roll_number,
+        month: feeForm.month,
+        year: feeForm.year ? Number(feeForm.year) : undefined,
+        amount: Number(feeForm.amount),
+        paid_amount: feeForm.paid_amount ? Number(feeForm.paid_amount) : 0,
+        status: feeForm.status,
+        due_date: feeForm.due_date,
+        remarks: feeForm.remarks,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Failed to update fee');
       Alert.alert('Updated', 'Fee record updated successfully');
       setSelected(null);
       setFeeForm(null);
@@ -163,22 +202,18 @@ export default function FeesScreen({ navigation }) {
     if (!form.student_name || !form.amount) return Alert.alert('Required', 'Student and amount are required');
     setSaving(true);
     try {
-      const token = await AsyncStorage.getItem('token');
-      const res = await fetch(`${BASE}/fees/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          student_name: form.student_name,
-          roll_number: form.roll_number,
-          month: form.month,
-          year: form.year ? Number(form.year) : undefined,
-          amount: Number(form.amount),
-          due_date: form.due_date,
-          remarks: form.remarks,
-        }),
+      await eduos.post('/fees', {
+        student_id: form.student_id || undefined,
+        student_name: form.student_name,
+        roll_number: form.roll_number,
+        month: form.month,
+        year: form.year ? Number(form.year) : undefined,
+        amount: Number(form.amount),
+        paid_amount: form.paid_amount ? Number(form.paid_amount) : 0,
+        status: form.status,
+        due_date: form.due_date,
+        remarks: form.remarks,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Failed to create fee');
       Alert.alert('Added', 'Fee record created successfully');
       setShowAdd(false);
       setForm(EMPTY_FORM);
@@ -188,27 +223,24 @@ export default function FeesScreen({ navigation }) {
   };
 
   const deleteFee = async () => {
-    if (!selected) return;
-    Alert.alert('Confirm Delete', `Delete fee for ${selected.student_name}?`, [
+    if (!selected?.id) return;
+    Alert.alert('Confirm Delete', `Delete fee record for ${selected.student_name}?`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => {
-        setSaving(true);
-        try {
-          const token = await AsyncStorage.getItem('token');
-          const res = await fetch(`${BASE}/fees/${selected.id}`, {
-            method: 'DELETE',
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (!res.ok) {
-            const data = await res.json().catch(() => ({}));
-            throw new Error(data.detail || 'Failed to delete fee');
-          }
-          Alert.alert('Deleted', 'Fee record removed');
-          setSelected(null);
-          load();
-        } catch (e) { Alert.alert('Error', e.message); }
-        finally { setSaving(false); }
-      } },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          setUpdating(true);
+          try {
+            await eduos.delete(`/fees/${selected.id}`);
+            Alert.alert('Deleted', 'Fee record removed successfully');
+            setSelected(null);
+            setFeeForm(null);
+            load();
+          } catch (e) { Alert.alert('Error', e.message); }
+          finally { setUpdating(false); }
+        },
+      },
     ]);
   };
 
@@ -310,7 +342,11 @@ export default function FeesScreen({ navigation }) {
               <Text style={styles.formLabel}>Amount *</Text>
               <TextInput style={styles.formInput} value={form.amount} onChangeText={(value) => setForm((prev) => ({ ...prev, amount: value }))} placeholder="Amount" placeholderTextColor={colors.textMuted} keyboardType="numeric" />
               <Text style={styles.formLabel}>Due Date</Text>
-              <TextInput style={styles.formInput} value={form.due_date} onChangeText={(value) => setForm((prev) => ({ ...prev, due_date: value }))} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textMuted} autoCapitalize="none" />
+              <TouchableOpacity onPress={() => openDatePicker('form')} style={styles.formInput}>
+                <Text style={[styles.triggerText, !form.due_date && styles.placeholderText]}>{form.due_date || 'Pick due date'}</Text>
+              </TouchableOpacity>
+              <Text style={styles.formLabel}>Status</Text>
+              <SelectField label="Status" value={form.status} onChange={(value) => setForm((prev) => ({ ...prev, status: value }))} options={statusOptions} placeholder="Select status" />
               <Text style={styles.formLabel}>Remarks</Text>
               <TextInput style={[styles.formInput, styles.multiline]} value={form.remarks} onChangeText={(value) => setForm((prev) => ({ ...prev, remarks: value }))} placeholder="Remarks" placeholderTextColor={colors.textMuted} multiline />
               <TouchableOpacity style={styles.saveBtn} onPress={addFee} disabled={saving}>
@@ -331,6 +367,7 @@ export default function FeesScreen({ navigation }) {
               </TouchableOpacity>
             </View>
             <ScrollView keyboardShouldPersistTaps="handled">
+              <Text style={styles.infoBanner}>Update the fee details below or delete the record if it was created by mistake.</Text>
               <SelectField
                 label="Student Name"
                 value={feeForm?.student_id}
@@ -348,19 +385,41 @@ export default function FeesScreen({ navigation }) {
               <TextInput style={styles.formInput} value={feeForm?.paid_amount || ''} onChangeText={(value) => setFeeForm((prev) => ({ ...prev, paid_amount: value }))} placeholder="Paid amount" placeholderTextColor={colors.textMuted} keyboardType="numeric" />
               <SelectField label="Status" value={feeForm?.status} onChange={(value) => setFeeForm((prev) => ({ ...prev, status: value }))} options={statusOptions} placeholder="Select status" />
               <Text style={styles.formLabel}>Due Date</Text>
-              <TextInput style={styles.formInput} value={feeForm?.due_date || ''} onChangeText={(value) => setFeeForm((prev) => ({ ...prev, due_date: value }))} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textMuted} autoCapitalize="none" />
+              <TouchableOpacity onPress={() => openDatePicker('feeForm')} style={styles.formInput}>
+                <Text style={[styles.triggerText, !feeForm?.due_date && styles.placeholderText]}>{feeForm?.due_date || 'Pick due date'}</Text>
+              </TouchableOpacity>
               <Text style={styles.formLabel}>Remarks</Text>
               <TextInput style={[styles.formInput, styles.multiline]} value={feeForm?.remarks || ''} onChangeText={(value) => setFeeForm((prev) => ({ ...prev, remarks: value }))} placeholder="Remarks" placeholderTextColor={colors.textMuted} multiline />
               <TouchableOpacity style={styles.saveBtn} onPress={updateFee} disabled={updating}>
                 <Text style={styles.saveBtnText}>{updating ? 'Updating...' : 'Update Fee'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.error, marginTop: spacing.sm }]} onPress={deleteFee} disabled={updating}>
+                <Text style={styles.saveBtnText}>{updating ? 'Working...' : 'Delete Fee'}</Text>
               </TouchableOpacity>
               {selected?.status !== 'paid' ? (
                 <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.success, marginTop: spacing.sm }]} onPress={() => markAsPaid(selected)} disabled={updating}>
                   <Text style={styles.saveBtnText}>{updating ? 'Updating...' : 'Mark as Paid'}</Text>
                 </TouchableOpacity>
               ) : null}
-              <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.error, marginTop: spacing.sm }]} onPress={deleteFee} disabled={saving}>
-                <Text style={styles.saveBtnText}>{saving ? 'Deleting...' : 'Delete Fee'}</Text>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+      <Modal visible={datePicker.open} animationType="slide" transparent onRequestClose={() => setDatePicker((prev) => ({ ...prev, open: false }))}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Due Date</Text>
+              <TouchableOpacity onPress={() => setDatePicker((prev) => ({ ...prev, open: false }))}>
+                <Text style={styles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              <SelectField label="Day" value={datePickerValue.day} onChange={(value) => setDatePickerValue((prev) => ({ ...prev, day: value }))} options={DAY_OPTIONS} placeholder="Day" />
+              <SelectField label="Month" value={datePickerValue.month} onChange={(value) => setDatePickerValue((prev) => ({ ...prev, month: value }))} options={DUE_MONTH_OPTIONS} placeholder="Month" />
+              <SelectField label="Year" value={datePickerValue.year} onChange={(value) => setDatePickerValue((prev) => ({ ...prev, year: value }))} options={YEAR_OPTIONS} placeholder="Year" />
+              <TouchableOpacity style={styles.saveBtn} onPress={confirmDatePicker}>
+                <Text style={styles.saveBtnText}>Save Date</Text>
               </TouchableOpacity>
             </ScrollView>
           </View>
@@ -404,6 +463,9 @@ const styles = StyleSheet.create({
   formInput: { backgroundColor: colors.background, borderRadius: 10, borderWidth: 1, borderColor: colors.border, padding: 12, color: colors.text, fontSize: 14 },
   multiline: { minHeight: 100, textAlignVertical: 'top' },
   detailValue: { color: colors.text, fontSize: 14, fontWeight: '600', marginTop: 4 },
+  infoBanner: { color: colors.textMuted, fontSize: 13, lineHeight: 19, marginBottom: spacing.sm },
   saveBtn: { backgroundColor: colors.primary, borderRadius: 12, padding: 14, alignItems: 'center', marginTop: spacing.lg },
   saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  triggerText: { color: colors.text, fontSize: 14 },
+  placeholderText: { color: colors.textMuted },
 });

@@ -9,6 +9,7 @@ import { colors, spacing, fonts } from '../../constants/theme';
 import LoadingScreen from '../../components/LoadingScreen';
 import ErrorScreen from '../../components/ErrorScreen';
 import ScreenWrapper from '../../components/ScreenWrapper';
+import { eduos } from '../../services/api';
 
 const BASE = 'https://nyxion-eduos-production-63b9.up.railway.app/api/v1';
 
@@ -61,7 +62,6 @@ export default function SchoolsScreen({ navigation }) {
     if (!form.name || !form.code) return Alert.alert('Required', 'Name and code are required');
     setSaving(true);
     try {
-      const token = await AsyncStorage.getItem('token');
       const payload = {
         name: form.name,
         code: form.code,
@@ -75,13 +75,7 @@ export default function SchoolsScreen({ navigation }) {
         payload.admin_password = form.admin_password;
         payload.admin_role = 'admin';
       }
-      const res = await fetch(`${BASE}/schools`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Failed to add school');
+      await eduos.post('/schools', payload);
       Alert.alert('✅ Added', `${form.name} added successfully`);
       setShowAdd(false);
       setCreateAdmin(false);
@@ -92,35 +86,20 @@ export default function SchoolsScreen({ navigation }) {
   };
 
   const updateSchool = async () => {
-    if (!selected || !selected.name || !selected.code) return Alert.alert('Required', 'Name and code are required');
+    if (!selected?.id || !selected?.name || !selected?.code) return Alert.alert('Required', 'Name and code are required');
     setSaving(true);
     try {
-      const token = await AsyncStorage.getItem('token');
-      const payload = {
+      await eduos.patch(`/schools/${selected.id}`, {
         name: selected.name,
         code: selected.code,
         address: selected.address,
         phone: selected.phone,
         email: selected.email,
         package: selected.package,
-      };
-      const request = async (method) => {
-        const res = await fetch(`${BASE}/schools/${selected.id}`, {
-          method,
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify(payload),
-        });
-        return res;
-      };
-      let res = await request('PATCH');
-      if (res.status === 405) {
-        res = await request('PUT');
-      }
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Failed to update school');
-      Alert.alert('✅ Updated', `${selected.name} updated successfully`);
-      setEditing(false);
+      });
+      Alert.alert('Updated', `${selected.name} updated successfully`);
       setSelected(null);
+      setEditing(false);
       load();
     } catch (e) { Alert.alert('Error', e.message); }
     finally { setSaving(false); }
@@ -133,12 +112,7 @@ export default function SchoolsScreen({ navigation }) {
       { text: 'Delete', style: 'destructive', onPress: async () => {
         setSaving(true);
         try {
-          const token = await AsyncStorage.getItem('token');
-          const res = await fetch(`${BASE}/schools/${selected.id}`, {
-            method: 'DELETE',
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (!res.ok) throw new Error('Failed to delete school');
+          await eduos.delete(`/schools/${selected.id}`);
           Alert.alert('Deleted', `${selected.name} has been removed.`);
           setSelected(null);
           load();
@@ -237,15 +211,6 @@ export default function SchoolsScreen({ navigation }) {
                       </TouchableOpacity>
                     ))}
                   </View>
-                  <View style={styles.packageDetails}>
-                    <Text style={styles.packageDetailsTitle}>Included Features</Text>
-                    {PACKAGE_FEATURES[selected?.package || 'starter'].map((feature) => (
-                      <Text key={feature} style={styles.packageFeature}>• {feature}</Text>
-                    ))}
-                  </View>
-                  <TouchableOpacity style={styles.saveBtn} onPress={updateSchool} disabled={saving}>
-                    {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>✅ Save Changes</Text>}
-                  </TouchableOpacity>
                 </>
               ) : (
                 <>
@@ -262,16 +227,21 @@ export default function SchoolsScreen({ navigation }) {
                       <Text style={styles.detailValue}>{value}</Text>
                     </View>
                   ))}
-                  <View style={styles.modalActions}>
-                    <TouchableOpacity style={styles.actionBtn} onPress={() => setEditing(true)}>
-                      <Text style={styles.actionBtnText}>Edit</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[styles.actionBtn, styles.deleteBtn]} onPress={deleteSchool}>
-                      <Text style={[styles.actionBtnText, styles.deleteBtnText]}>Delete</Text>
-                    </TouchableOpacity>
-                  </View>
                 </>
               )}
+              <View style={styles.modalActions}>
+                <TouchableOpacity style={styles.actionBtn} onPress={() => setEditing(prev => !prev)}>
+                  <Text style={styles.actionBtnText}>{editing ? 'Cancel Edit' : 'Edit'}</Text>
+                </TouchableOpacity>
+                {editing ? (
+                  <TouchableOpacity style={[styles.actionBtn, styles.editBtn]} onPress={updateSchool} disabled={saving}>
+                    <Text style={styles.editBtnText}>{saving ? 'Saving...' : 'Update'}</Text>
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity style={[styles.actionBtn, styles.deleteBtn]} onPress={deleteSchool}>
+                  <Text style={[styles.actionBtnText, styles.deleteBtnText]}>Delete</Text>
+                </TouchableOpacity>
+              </View>
             </ScrollView>
           </View>
         </View>
@@ -405,6 +375,7 @@ const styles = StyleSheet.create({
   packageDetails: { backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: spacing.md, marginTop: spacing.md },
   packageDetailsTitle: { color: colors.text, fontSize: 13, fontWeight: '700', marginBottom: 8 },
   packageFeature: { color: colors.textMuted, fontSize: 13, lineHeight: 20 },
+  supportNote: { color: colors.textMuted, fontSize: 13, lineHeight: 19, marginTop: spacing.lg },
   toggleAdminBtn: { marginTop: spacing.md, paddingVertical: 10, alignItems: 'center' },
   toggleAdminText: { color: colors.primary, fontWeight: '700', fontSize: 14 },
   saveBtn: { backgroundColor: colors.primary, borderRadius: 12, padding: 14, alignItems: 'center', marginTop: spacing.lg },
@@ -412,6 +383,8 @@ const styles = StyleSheet.create({
   modalActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.lg },
   actionBtn: { flex: 1, borderRadius: 12, padding: 14, alignItems: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, marginRight: 10 },
   actionBtnText: { color: colors.text, fontSize: 14, fontWeight: '700' },
+  editBtn: { backgroundColor: colors.success, borderColor: colors.success },
+  editBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   deleteBtn: { backgroundColor: colors.danger || '#E63946', borderColor: colors.danger || '#E63946', marginRight: 0, marginLeft: 10 },
   deleteBtnText: { color: '#fff' },
 });

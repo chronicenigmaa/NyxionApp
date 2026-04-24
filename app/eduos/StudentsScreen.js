@@ -9,6 +9,7 @@ import LoadingScreen from '../../components/LoadingScreen';
 import ErrorScreen from '../../components/ErrorScreen';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import SelectField from '../../components/SelectField';
+import { eduos } from '../../services/api';
 import {
   assignStudentToTeacher,
   removeStudentFromTeacher,
@@ -129,7 +130,6 @@ export default function StudentsScreen({ navigation }) {
     if (!form.full_name) return Alert.alert('Required', 'Full name is required');
     setSaving(true);
     try {
-      const token = await AsyncStorage.getItem('token');
       const payload = {
         full_name: form.full_name,
         father_name: form.father_name,
@@ -140,14 +140,7 @@ export default function StudentsScreen({ navigation }) {
         email: form.email,
       };
       if (form.teacher_id) payload.teacher_id = Number.isNaN(Number(form.teacher_id)) ? form.teacher_id : Number(form.teacher_id);
-
-      const res = await fetch(`${BASE}/students/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Failed to add student');
+      const data = await eduos.post('/students', payload);
 
       await syncStudentAssignment({
         ...data,
@@ -172,7 +165,6 @@ export default function StudentsScreen({ navigation }) {
     if (!selected?.full_name) return Alert.alert('Required', 'Full name is required');
     setSaving(true);
     try {
-      const token = await AsyncStorage.getItem('token');
       const payload = {
         full_name: selected.full_name,
         father_name: selected.father_name,
@@ -183,14 +175,7 @@ export default function StudentsScreen({ navigation }) {
         email: selected.email,
       };
       if (selected.teacher_id) payload.teacher_id = Number.isNaN(Number(selected.teacher_id)) ? selected.teacher_id : Number(selected.teacher_id);
-
-      const res = await fetch(`${BASE}/students/${selected.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Failed to update student');
+      const data = await eduos.patch(`/students/${selected.id}`, payload);
 
       await syncStudentAssignment({
         ...selected,
@@ -218,15 +203,7 @@ export default function StudentsScreen({ navigation }) {
         onPress: async () => {
           setSaving(true);
           try {
-            const token = await AsyncStorage.getItem('token');
-            const res = await fetch(`${BASE}/students/${selected.id}`, {
-              method: 'DELETE',
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            if (!res.ok) {
-              const data = await res.json().catch(() => ({}));
-              throw new Error(data.detail || 'Failed to delete student');
-            }
+            await eduos.delete(`/students/${selected.id}`);
             if (selected.teacher_id) {
               await removeStudentFromTeacher(selected, selected.teacher_id);
             }

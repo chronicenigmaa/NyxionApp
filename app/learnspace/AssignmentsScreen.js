@@ -11,6 +11,7 @@ import LoadingScreen from '../../components/LoadingScreen';
 import ErrorScreen from '../../components/ErrorScreen';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import SelectField from '../../components/SelectField';
+import { learn } from '../../services/api';
 
 const BASE = 'https://nyxion-learnspace-production.up.railway.app/api/v1';
 const CLASS_OPTIONS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'].map((item) => ({ label: `Class ${item}`, value: item }));
@@ -137,17 +138,13 @@ export default function AssignmentsScreen({ navigation, route }) {
       let success = false;
       for (const endpoint of ['/submissions/submit', '/submissions/', '/assignments/submit']) {
         const payload = buildSubmissionPayload(selected.id, submitText, submitFiles);
-        const res = await fetch(`${BASE}${endpoint}`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-          body: payload,
-        });
-        const data = await res.json().catch(() => ({}));
-        if (res.ok) {
+        try {
+          await learn.write(endpoint, { method: 'POST', body: payload });
           success = true;
           break;
+        } catch (e) {
+          lastError = e.message;
         }
-        lastError = data.detail || data.message || `HTTP ${res.status}`;
       }
 
       if (!success) throw new Error(lastError);
@@ -168,13 +165,7 @@ export default function AssignmentsScreen({ navigation, route }) {
       const token = await getToken();
       const payload = buildAssignmentPayload(newAssignment, assignmentFiles);
 
-      const res = await fetch(`${BASE}/assignments/`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, ...payload.headers },
-        body: payload.body,
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail || data.message || 'Failed to create assignment');
+      await learn.write('/assignments', { method: 'POST', body: payload.body, headers: payload.headers });
       Alert.alert('Created', 'Assignment created successfully');
       setShowCreate(false);
       setNewAssignment(EMPTY_ASSIGNMENT);

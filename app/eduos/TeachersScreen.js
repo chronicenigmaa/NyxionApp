@@ -6,6 +6,7 @@ import LoadingScreen from '../../components/LoadingScreen';
 import ErrorScreen from '../../components/ErrorScreen';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import SelectField from '../../components/SelectField';
+import { eduos } from '../../services/api';
 
 const BASE = 'https://nyxion-eduos-production-63b9.up.railway.app/api/v1';
 
@@ -55,16 +56,9 @@ export default function TeachersScreen({ navigation }) {
     if (!form.full_name || !form.email) return Alert.alert('Required', 'Name and email are required');
     setSaving(true);
     try {
-      const token = await AsyncStorage.getItem('token');
       const payload = { ...form };
       if (!payload.password) delete payload.password;
-      const res = await fetch(`${BASE}/teachers/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Failed to add teacher');
+      await eduos.post('/teachers', payload);
       Alert.alert('✅ Added', `${form.full_name} added successfully`);
       setShowAdd(false);
       setForm({ full_name: '', email: '', subject: '', qualification: '', class_name: '', section: '', salary: '', password: '' });
@@ -77,7 +71,6 @@ export default function TeachersScreen({ navigation }) {
     if (!selected) return;
     setSaving(true);
     try {
-      const token = await AsyncStorage.getItem('token');
       const payload = {
         full_name: selected.full_name,
         email: selected.email,
@@ -88,13 +81,7 @@ export default function TeachersScreen({ navigation }) {
         salary: selected.salary,
       };
       if (selected.password) payload.password = selected.password;
-      const res = await fetch(`${BASE}/teachers/${selected.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Failed to update teacher');
+      await eduos.patch(`/teachers/${selected.id}`, payload);
       Alert.alert('✅ Updated', `${selected.full_name} updated successfully`);
       setSelected(null);
       load();
@@ -109,15 +96,7 @@ export default function TeachersScreen({ navigation }) {
       { text: 'Delete', style: 'destructive', onPress: async () => {
         setSaving(true);
         try {
-          const token = await AsyncStorage.getItem('token');
-          const res = await fetch(`${BASE}/teachers/${selected.id}`, {
-            method: 'DELETE',
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (!res.ok) {
-            const data = await res.json().catch(() => ({}));
-            throw new Error(data.detail || 'Failed to delete teacher');
-          }
+          await eduos.delete(`/teachers/${selected.id}`);
           Alert.alert('Deleted', `${selected.full_name} has been removed.`);
           setSelected(null);
           load();
@@ -235,6 +214,7 @@ export default function TeachersScreen({ navigation }) {
               <TouchableOpacity onPress={() => setSelected(null)}><Text style={styles.modalClose}>✕</Text></TouchableOpacity>
             </View>
             <ScrollView keyboardShouldPersistTaps="handled">
+              <Text style={styles.infoBanner}>Update teacher details here, then save to apply changes.</Text>
               {[
                 ['Name *', 'full_name', 'default'],
                 ['Email *', 'email', 'email-address'],
@@ -287,10 +267,10 @@ export default function TeachersScreen({ navigation }) {
               ))}
               <View style={styles.actionRow}>
                 <TouchableOpacity style={styles.editBtn} onPress={updateTeacher} disabled={saving}>
-                  <Text style={styles.editBtnText}>{saving ? 'Saving…' : 'Update'}</Text>
+                  <Text style={styles.editBtnText}>{saving ? 'Saving...' : 'Update Teacher'}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.deleteBtn} onPress={deleteTeacher} disabled={saving}>
-                  <Text style={styles.deleteBtnText}>Delete</Text>
+                  <Text style={styles.deleteBtnText}>{saving ? 'Working…' : 'Delete Teacher'}</Text>
                 </TouchableOpacity>
               </View>
             </ScrollView>
@@ -331,6 +311,7 @@ const styles = StyleSheet.create({
   detailRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
   detailLabel: { color: colors.textMuted, fontSize: 14 },
   detailValue: { color: colors.text, fontSize: 14, fontWeight: '600', flex: 1, textAlign: 'right' },
+  infoBanner: { color: colors.textMuted, fontSize: 13, lineHeight: 19, marginBottom: spacing.sm },
   actionRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 10, marginTop: spacing.lg },
   editBtn: { flex: 1, backgroundColor: colors.success, borderRadius: 12, padding: 14, alignItems: 'center' },
   editBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },

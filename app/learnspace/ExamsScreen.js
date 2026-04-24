@@ -5,6 +5,7 @@ import { colors, spacing, fonts } from '../../constants/theme';
 import LoadingScreen from '../../components/LoadingScreen';
 import ErrorScreen from '../../components/ErrorScreen';
 import ScreenWrapper from '../../components/ScreenWrapper';
+import { learn } from '../../services/api';
 
 const BASE = 'https://nyxion-learnspace-production.up.railway.app/api/v1';
 
@@ -47,21 +48,14 @@ export default function ExamsScreen({ navigation, route }) {
     if (!newExam.title || !newExam.class_name) return Alert.alert('Required', 'Title and class are required');
     setLoading(true);
     try {
-      const token = await AsyncStorage.getItem('learn_token');
-      const res = await fetch(`${BASE}/exams/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          title: newExam.title,
-          subject: newExam.subject,
-          class_name: newExam.class_name,
-          duration_minutes: Number(newExam.duration_minutes),
-          total_marks: Number(newExam.total_marks),
-          scheduled_at: newExam.scheduled_at,
-        }),
+      await learn.post('/exams', {
+        title: newExam.title,
+        subject: newExam.subject,
+        class_name: newExam.class_name,
+        duration_minutes: Number(newExam.duration_minutes),
+        total_marks: Number(newExam.total_marks),
+        scheduled_at: newExam.scheduled_at,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Failed to create exam');
       Alert.alert('✅ Created', 'Exam created successfully');
       setShowCreate(false);
       setNewExam({ title: '', subject: '', class_name: '', duration_minutes: '', total_marks: '', scheduled_at: '' });

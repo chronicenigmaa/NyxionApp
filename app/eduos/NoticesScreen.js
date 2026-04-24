@@ -6,6 +6,7 @@ import LoadingScreen from '../../components/LoadingScreen';
 import ErrorScreen from '../../components/ErrorScreen';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import SelectField from '../../components/SelectField';
+import { eduos } from '../../services/api';
 
 const BASE = 'https://nyxion-eduos-production-63b9.up.railway.app/api/v1';
 const AUDIENCE_OPTIONS = [
@@ -44,14 +45,7 @@ export default function NoticesScreen({ navigation }) {
     if (!form.title || !form.message) return Alert.alert('Required', 'Title and message are required');
     setSaving(true);
     try {
-      const token = await AsyncStorage.getItem('token');
-      const res = await fetch(`${BASE}/communication/notices`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(form),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Failed to create notice');
+      await eduos.post('/communication/notices', form);
       Alert.alert('Added', 'Notice published successfully');
       setShowAdd(false);
       setForm(EMPTY_NOTICE);
@@ -61,32 +55,14 @@ export default function NoticesScreen({ navigation }) {
   };
 
   const updateNotice = async () => {
-    if (!selected?.title || !selected?.message) return Alert.alert('Required', 'Title and message are required');
+    if (!selected?.id || !selected?.title || !selected?.message) return Alert.alert('Required', 'Title and message are required');
     setSaving(true);
     try {
-      const token = await AsyncStorage.getItem('token');
-      let res = await fetch(`${BASE}/communication/notices/${selected.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          title: selected.title,
-          message: selected.message,
-          target_audience: selected.target_audience || 'all',
-        }),
+      await eduos.patch(`/communication/notices/${selected.id}`, {
+        title: selected.title,
+        message: selected.message,
+        target_audience: selected.target_audience || 'all',
       });
-      if (res.status === 405) {
-        res = await fetch(`${BASE}/communication/notices/${selected.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({
-            title: selected.title,
-            message: selected.message,
-            target_audience: selected.target_audience || 'all',
-          }),
-        });
-      }
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Failed to update notice');
       Alert.alert('Updated', 'Notice updated successfully');
       setSelected(null);
       load();
@@ -95,27 +71,23 @@ export default function NoticesScreen({ navigation }) {
   };
 
   const deleteNotice = async () => {
-    if (!selected) return;
+    if (!selected?.id) return;
     Alert.alert('Confirm Delete', `Delete "${selected.title}"?`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => {
-        setSaving(true);
-        try {
-          const token = await AsyncStorage.getItem('token');
-          const res = await fetch(`${BASE}/communication/notices/${selected.id}`, {
-            method: 'DELETE',
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (!res.ok) {
-            const data = await res.json().catch(() => ({}));
-            throw new Error(data.detail || 'Failed to delete notice');
-          }
-          Alert.alert('Deleted', 'Notice removed');
-          setSelected(null);
-          load();
-        } catch (e) { Alert.alert('Error', e.message); }
-        finally { setSaving(false); }
-      } },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          setSaving(true);
+          try {
+            await eduos.delete(`/communication/notices/${selected.id}`);
+            Alert.alert('Deleted', 'Notice removed successfully');
+            setSelected(null);
+            load();
+          } catch (e) { Alert.alert('Error', e.message); }
+          finally { setSaving(false); }
+        },
+      },
     ]);
   };
 
@@ -178,17 +150,40 @@ export default function NoticesScreen({ navigation }) {
               <TouchableOpacity onPress={() => setSelected(null)}><Text style={styles.modalClose}>✕</Text></TouchableOpacity>
             </View>
             <ScrollView keyboardShouldPersistTaps="handled">
+              <Text style={styles.readOnlyNote}>Edit the notice details below and save when you are done.</Text>
               <Text style={styles.formLabel}>Title *</Text>
-              <TextInput style={styles.formInput} value={selected?.title || ''} onChangeText={(value) => setSelected((prev) => ({ ...prev, title: value }))} placeholder="Notice title" placeholderTextColor={colors.textMuted} />
-              <SelectField label="Audience" value={selected?.target_audience} onChange={(value) => setSelected((prev) => ({ ...prev, target_audience: value }))} options={AUDIENCE_OPTIONS} placeholder="Select audience" />
+              <TextInput
+                style={styles.formInput}
+                value={selected?.title || ''}
+                onChangeText={(value) => setSelected((prev) => ({ ...prev, title: value }))}
+                placeholder="Notice title"
+                placeholderTextColor={colors.textMuted}
+              />
+              <Text style={styles.formLabel}>Audience</Text>
+              <SelectField
+                label=""
+                value={selected?.target_audience || 'all'}
+                onChange={(value) => setSelected((prev) => ({ ...prev, target_audience: value }))}
+                options={AUDIENCE_OPTIONS}
+                placeholder="Select audience"
+              />
               <Text style={styles.formLabel}>Message *</Text>
-              <TextInput style={[styles.formInput, styles.multiline]} value={selected?.message || ''} onChangeText={(value) => setSelected((prev) => ({ ...prev, message: value }))} placeholder="Write your notice" placeholderTextColor={colors.textMuted} multiline />
-              <TouchableOpacity style={styles.saveBtn} onPress={updateNotice} disabled={saving}>
-                <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Update Notice'}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.error, marginTop: spacing.sm }]} onPress={deleteNotice} disabled={saving}>
-                <Text style={styles.saveBtnText}>{saving ? 'Deleting...' : 'Delete Notice'}</Text>
-              </TouchableOpacity>
+              <TextInput
+                style={[styles.formInput, styles.multiline]}
+                value={selected?.message || ''}
+                onChangeText={(value) => setSelected((prev) => ({ ...prev, message: value }))}
+                placeholder="Write your notice"
+                placeholderTextColor={colors.textMuted}
+                multiline
+              />
+              <View style={styles.actionRow}>
+                <TouchableOpacity style={styles.saveBtn} onPress={updateNotice} disabled={saving}>
+                  <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Update Notice'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.deleteBtn} onPress={deleteNotice} disabled={saving}>
+                  <Text style={styles.deleteBtnText}>{saving ? 'Working...' : 'Delete Notice'}</Text>
+                </TouchableOpacity>
+              </View>
             </ScrollView>
           </View>
         </View>
@@ -221,6 +216,12 @@ const styles = StyleSheet.create({
   formLabel: { color: colors.textMuted, fontSize: 13, marginBottom: 6, marginTop: 14 },
   formInput: { backgroundColor: colors.background, borderRadius: 10, borderWidth: 1, borderColor: colors.border, padding: 12, color: colors.text, fontSize: 14 },
   multiline: { minHeight: 120, textAlignVertical: 'top' },
+  readOnlyNote: { color: colors.textMuted, fontSize: 13, lineHeight: 19, marginBottom: spacing.md },
+  readOnlyValue: { color: colors.text, fontSize: 14, lineHeight: 21 },
+  messageBox: { backgroundColor: colors.background, borderRadius: 10, borderWidth: 1, borderColor: colors.border, padding: 12 },
   saveBtn: { backgroundColor: colors.primary, borderRadius: 12, padding: 14, alignItems: 'center', marginTop: spacing.lg },
   saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  actionRow: { flexDirection: 'row', gap: 10, marginTop: spacing.lg },
+  deleteBtn: { flex: 1, backgroundColor: colors.error, borderRadius: 12, padding: 14, alignItems: 'center' },
+  deleteBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });
