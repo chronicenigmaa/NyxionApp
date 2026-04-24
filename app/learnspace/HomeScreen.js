@@ -48,10 +48,19 @@ export default function LearnHomeScreen({ user, onNavigate, onLogout }) {
           </View>
         )}
 
+        {isTeacher && (
+          <View style={styles.teacherBanner}>
+            <Text style={styles.teacherBannerTitle}>Teacher workspace</Text>
+            <Text style={styles.teacherBannerText}>
+              Start with Student Grades to review your assigned learners, then create assignments, notes, exams, or attendance updates.
+            </Text>
+          </View>
+        )}
+
         <Text style={styles.sectionTitle}>Learning Hub</Text>
         <View style={styles.menuGrid}>
           <MenuItem icon="document-text-outline" label="Assignments" color={colors.primary} onPress={() => onNavigate('Assignments')} />
-          <MenuItem icon="stats-chart-outline" label="Grades" color={colors.success} onPress={() => onNavigate('Grades')} />
+          <MenuItem icon="stats-chart-outline" label={isTeacher ? 'Student Grades' : 'Grades'} color={colors.success} onPress={() => onNavigate('Grades')} />
           <MenuItem icon="checkmark-circle-outline" label="Attendance" color="#0EA5E9" onPress={() => onNavigate('LearnAttendance')} />
           <MenuItem icon="clipboard-outline" label="Exams" color={colors.error} onPress={() => onNavigate('Exams')} />
           <MenuItem icon="journal-outline" label="Notes" color={colors.warning} onPress={() => onNavigate('Notes')} />
@@ -111,6 +120,17 @@ const styles = StyleSheet.create({
   infoText: { color: colors.text, fontSize: 14, fontWeight: '600' },
   rollPill: { backgroundColor: colors.primary + '15', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
   rollText: { color: colors.primary, fontSize: 12, fontWeight: '600' },
+  teacherBanner: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
+    backgroundColor: colors.primary + '10',
+    borderRadius: 14,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.primary + '20',
+  },
+  teacherBannerTitle: { color: colors.primary, fontSize: 14, fontWeight: '800', marginBottom: 4 },
+  teacherBannerText: { color: colors.text, fontSize: 13, lineHeight: 19 },
   sectionTitle: {
     color: colors.textMuted,
     fontSize: 11,

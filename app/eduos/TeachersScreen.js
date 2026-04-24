@@ -5,6 +5,7 @@ import { colors, spacing, fonts } from '../../constants/theme';
 import LoadingScreen from '../../components/LoadingScreen';
 import ErrorScreen from '../../components/ErrorScreen';
 import ScreenWrapper from '../../components/ScreenWrapper';
+import SelectField from '../../components/SelectField';
 
 const BASE = 'https://nyxion-eduos-production-63b9.up.railway.app/api/v1';
 
@@ -18,7 +19,13 @@ export default function TeachersScreen({ navigation }) {
   const [selected, setSelected] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ full_name: '', email: '', subject: '', qualification: '', class_name: '', section: '', salary: '' });
+  const [form, setForm] = useState({ full_name: '', email: '', subject: '', qualification: '', class_name: '', section: '', salary: '', password: '' });
+  const subjectOptions = ['Math', 'Science', 'English', 'Urdu', 'History', 'Computer'];
+  const classOptions = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
+  const sectionOptions = ['A', 'B', 'C', 'D', 'E'];
+  const subjectDropdown = subjectOptions.map(option => ({ label: option, value: option }));
+  const classDropdown = classOptions.map(option => ({ label: `Class ${option}`, value: option }));
+  const sectionDropdown = sectionOptions.map(option => ({ label: `Section ${option}`, value: option }));
 
   useEffect(() => { load(); }, []);
   useEffect(() => {
@@ -49,16 +56,18 @@ export default function TeachersScreen({ navigation }) {
     setSaving(true);
     try {
       const token = await AsyncStorage.getItem('token');
+      const payload = { ...form };
+      if (!payload.password) delete payload.password;
       const res = await fetch(`${BASE}/teachers/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Failed to add teacher');
       Alert.alert('✅ Added', `${form.full_name} added successfully`);
       setShowAdd(false);
-      setForm({ full_name: '', email: '', subject: '', qualification: '', class_name: '', section: '', salary: '' });
+      setForm({ full_name: '', email: '', subject: '', qualification: '', class_name: '', section: '', salary: '', password: '' });
       load();
     } catch (e) { Alert.alert('Error', e.message); }
     finally { setSaving(false); }
@@ -69,18 +78,20 @@ export default function TeachersScreen({ navigation }) {
     setSaving(true);
     try {
       const token = await AsyncStorage.getItem('token');
-      const res = await fetch(`${BASE}/teachers/${selected.id}/`, {
+      const payload = {
+        full_name: selected.full_name,
+        email: selected.email,
+        subject: selected.subject,
+        qualification: selected.qualification,
+        class_name: selected.class_name,
+        section: selected.section,
+        salary: selected.salary,
+      };
+      if (selected.password) payload.password = selected.password;
+      const res = await fetch(`${BASE}/teachers/${selected.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          full_name: selected.full_name,
-          email: selected.email,
-          subject: selected.subject,
-          qualification: selected.qualification,
-          class_name: selected.class_name,
-          section: selected.section,
-          salary: selected.salary,
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Failed to update teacher');
@@ -99,11 +110,14 @@ export default function TeachersScreen({ navigation }) {
         setSaving(true);
         try {
           const token = await AsyncStorage.getItem('token');
-          const res = await fetch(`${BASE}/teachers/${selected.id}/`, {
+          const res = await fetch(`${BASE}/teachers/${selected.id}`, {
             method: 'DELETE',
             headers: { Authorization: `Bearer ${token}` },
           });
-          if (!res.ok) throw new Error('Failed to delete teacher');
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.detail || 'Failed to delete teacher');
+          }
           Alert.alert('Deleted', `${selected.full_name} has been removed.`);
           setSelected(null);
           load();
@@ -158,6 +172,7 @@ export default function TeachersScreen({ navigation }) {
               {[
                 ['Full Name *', 'full_name'],
                 ['Email *', 'email'],
+                ['Password', 'password'],
                 ['Subject', 'subject'],
                 ['Qualification', 'qualification'],
                 ['Class', 'class_name'],
@@ -166,15 +181,42 @@ export default function TeachersScreen({ navigation }) {
               ].map(([label, key]) => (
                 <View key={key}>
                   <Text style={styles.formLabel}>{label}</Text>
-                  <TextInput
-                    style={styles.formInput}
-                    value={form[key]}
-                    onChangeText={v => setForm(p => ({ ...p, [key]: v }))}
-                    placeholder={label.replace(' *', '')}
-                    placeholderTextColor={colors.textMuted}
-                    autoCapitalize={key === 'email' ? 'none' : 'words'}
-                    keyboardType={key === 'email' ? 'email-address' : key === 'salary' ? 'numeric' : 'default'}
-                  />
+                  {key === 'subject' ? (
+                    <SelectField
+                      label=""
+                      value={form.subject}
+                      onChange={v => setForm(p => ({ ...p, subject: v }))}
+                      options={subjectDropdown}
+                      placeholder="Select subject"
+                    />
+                  ) : key === 'class_name' ? (
+                    <SelectField
+                      label=""
+                      value={form.class_name}
+                      onChange={v => setForm(p => ({ ...p, class_name: v }))}
+                      options={classDropdown}
+                      placeholder="Select class"
+                    />
+                  ) : key === 'section' ? (
+                    <SelectField
+                      label=""
+                      value={form.section}
+                      onChange={v => setForm(p => ({ ...p, section: v }))}
+                      options={sectionDropdown}
+                      placeholder="Select section"
+                    />
+                  ) : (
+                    <TextInput
+                      style={styles.formInput}
+                      value={form[key]}
+                      onChangeText={v => setForm(p => ({ ...p, [key]: v }))}
+                      placeholder={label.replace(' *', '')}
+                      placeholderTextColor={colors.textMuted}
+                      autoCapitalize={key === 'email' || key === 'password' ? 'none' : 'words'}
+                      keyboardType={key === 'email' ? 'email-address' : key === 'salary' ? 'numeric' : 'default'}
+                      secureTextEntry={key === 'password'}
+                    />
+                  )}
                 </View>
               ))}
               <TouchableOpacity style={styles.saveBtn} onPress={submitTeacher} disabled={saving}>
@@ -196,6 +238,7 @@ export default function TeachersScreen({ navigation }) {
               {[
                 ['Name *', 'full_name', 'default'],
                 ['Email *', 'email', 'email-address'],
+                ['Password', 'password', 'default'],
                 ['Subject', 'subject', 'default'],
                 ['Qualification', 'qualification', 'default'],
                 ['Class', 'class_name', 'default'],
@@ -204,15 +247,42 @@ export default function TeachersScreen({ navigation }) {
               ].map(([label, key, keyboardType]) => (
                 <View key={key}>
                   <Text style={styles.formLabel}>{label}</Text>
-                  <TextInput
-                    style={styles.formInput}
-                    value={selected?.[key] ? String(selected?.[key]) : ''}
-                    onChangeText={v => setSelected(prev => ({ ...prev, [key]: v }))}
-                    placeholder={label.replace(' *', '')}
-                    placeholderTextColor={colors.textMuted}
-                    keyboardType={keyboardType}
-                    autoCapitalize={key === 'email' ? 'none' : 'words'}
-                  />
+                  {key === 'subject' ? (
+                    <SelectField
+                      label=""
+                      value={selected?.subject}
+                      onChange={v => setSelected(prev => ({ ...prev, subject: v }))}
+                      options={subjectDropdown}
+                      placeholder="Select subject"
+                    />
+                  ) : key === 'class_name' ? (
+                    <SelectField
+                      label=""
+                      value={selected?.class_name}
+                      onChange={v => setSelected(prev => ({ ...prev, class_name: v }))}
+                      options={classDropdown}
+                      placeholder="Select class"
+                    />
+                  ) : key === 'section' ? (
+                    <SelectField
+                      label=""
+                      value={selected?.section}
+                      onChange={v => setSelected(prev => ({ ...prev, section: v }))}
+                      options={sectionDropdown}
+                      placeholder="Select section"
+                    />
+                  ) : (
+                    <TextInput
+                      style={styles.formInput}
+                      value={selected?.[key] ? String(selected?.[key]) : ''}
+                      onChangeText={v => setSelected(prev => ({ ...prev, [key]: v }))}
+                      placeholder={label.replace(' *', '')}
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType={keyboardType}
+                      autoCapitalize={key === 'email' || key === 'password' ? 'none' : 'words'}
+                      secureTextEntry={key === 'password'}
+                    />
+                  )}
                 </View>
               ))}
               <View style={styles.actionRow}>

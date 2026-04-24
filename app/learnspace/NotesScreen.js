@@ -11,6 +11,7 @@ import { colors, spacing, fonts } from '../../constants/theme';
 import LoadingScreen from '../../components/LoadingScreen';
 import ErrorScreen from '../../components/ErrorScreen';
 import ScreenHeader from '../../components/ScreenHeader';
+import SelectField from '../../components/SelectField';
 
 const BASE = 'https://nyxion-learnspace-production.up.railway.app/api/v1';
 const BASE_URL = 'https://nyxion-learnspace-production.up.railway.app';
@@ -36,6 +37,8 @@ export default function NotesScreen({ navigation, route }) {
   const [newNote, setNewNote] = useState({ title: '', subject: '', class_name: '', description: '' });
   const teacherMode = route?.params?.teacherMode;
   const canCreate = isTeacher || teacherMode;
+  const subjectOptions = ['Math', 'Science', 'English', 'Urdu', 'History', 'Computer'].map((option) => ({ label: option, value: option }));
+  const classOptions = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'].map((option) => ({ label: `Class ${option}`, value: option }));
 
   useEffect(() => { load(); }, []);
 
@@ -101,14 +104,13 @@ export default function NotesScreen({ navigation, route }) {
         { headers: token ? { Authorization: `Bearer ${token}` } : undefined }
       );
 
-      const { uri } = await downloadResumable.downloadAsync();
+      const result = await downloadResumable.downloadAsync();
+      const uri = result?.uri;
+      if (!uri) throw new Error('Download did not return a file path.');
 
-      if (await Linking.canOpenURL(uri)) {
-        await Linking.openURL(uri);
-        Alert.alert('Download Complete', `File saved and opened: ${file.name}`);
-      } else {
-        Alert.alert('Download Complete', `File saved to: ${uri}`);
-      }
+      const openUri = await FileSystem.getContentUriAsync(uri).catch(() => uri);
+      await Linking.openURL(openUri);
+      Alert.alert('Download Complete', `${file.name} is ready to view.`);
     } catch (e) {
       Alert.alert('Download Failed', e.message);
     } finally {
@@ -268,8 +270,6 @@ export default function NotesScreen({ navigation, route }) {
             <ScrollView keyboardShouldPersistTaps="handled">
               {[
                 ['Title *', 'title'],
-                ['Subject', 'subject'],
-                ['Class *', 'class_name'],
               ].map(([label, key]) => (
                 <View key={key}>
                   <Text style={styles.formLabel}>{label}</Text>
@@ -279,10 +279,24 @@ export default function NotesScreen({ navigation, route }) {
                     onChangeText={v => setNewNote(prev => ({ ...prev, [key]: v }))}
                     placeholder={label.replace(' *', '')}
                     placeholderTextColor={colors.textMuted}
-                    autoCapitalize={key === 'class_name' ? 'words' : 'sentences'}
+                    autoCapitalize="sentences"
                   />
                 </View>
               ))}
+              <SelectField
+                label="Subject"
+                value={newNote.subject}
+                onChange={(value) => setNewNote(prev => ({ ...prev, subject: value }))}
+                options={subjectOptions}
+                placeholder="Select subject"
+              />
+              <SelectField
+                label="Class *"
+                value={newNote.class_name}
+                onChange={(value) => setNewNote(prev => ({ ...prev, class_name: value }))}
+                options={classOptions}
+                placeholder="Select class"
+              />
               <Text style={styles.formLabel}>Description</Text>
               <TextInput
                 style={[styles.formInput, { minHeight: 120, textAlignVertical: 'top' }]}

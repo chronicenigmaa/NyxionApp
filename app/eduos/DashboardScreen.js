@@ -128,11 +128,18 @@ export default function DashboardScreen({ user, onLogout, navigation }) {
           <MenuItem icon="person-outline" label="Teachers" color={colors.warning} onPress={() => navigation.navigate('Teachers')} />
           <MenuItem icon="checkmark-circle-outline" label="Attendance" color={colors.success} onPress={() => navigation.navigate('Attendance')} />
           <MenuItem icon="card-outline" label="Fees" color="#8B5CF6" onPress={() => navigation.navigate('Fees')} />
-          <MenuItem icon="book-outline" label="Academics" color="#0EA5E9" onPress={() => navigation.navigate('Academics')} />
           <MenuItem icon="megaphone-outline" label="Notices" color="#06B6D4" onPress={() => navigation.navigate('Notices')} />
           <MenuItem icon="bar-chart-outline" label="Results" color="#F43F5E" onPress={() => navigation.navigate('Results')} />
           <MenuItem icon="time-outline" label="Timetable" color="#F97316" onPress={() => navigation.navigate('Timetable')} />
           <MenuItem icon="sparkles-outline" label="AI Tools" color={colors.primary} onPress={() => navigation.navigate('AITools')} />
+        </View>
+
+        <Text style={styles.sectionTitle}>Useful Tip</Text>
+        <View style={styles.tipCard}>
+          <Text style={styles.tipTitle}>Keep admin work in Students and Teachers</Text>
+          <Text style={styles.tipText}>
+            Student assignment, class setup, and teacher ownership now flow through those two screens so day-to-day tasks are easier to find.
+          </Text>
         </View>
 
         <View style={{ height: spacing.xl }} />
@@ -229,4 +236,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   menuLabel: { color: colors.text, fontSize: 11, fontWeight: '600', textAlign: 'center' },
+  tipCard: {
+    marginHorizontal: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.md,
+  },
+  tipTitle: { color: colors.text, fontSize: 14, fontWeight: '700', marginBottom: 4 },
+  tipText: { color: colors.textMuted, fontSize: 13, lineHeight: 19 },
 });
