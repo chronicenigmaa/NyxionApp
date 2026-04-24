@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
-  TouchableOpacity, RefreshControl, StatusBar, Platform,
+  TouchableOpacity, RefreshControl,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, fonts } from '../../constants/theme';
 import NyxionLogo from '../../components/NyxionLogo';
@@ -11,17 +12,21 @@ import ScreenWrapper from '../../components/ScreenWrapper';
 
 const BASE = 'https://nyxion-eduos-production-63b9.up.railway.app/api/v1';
 
-const StatCard = ({ emoji, label, value, color }) => (
-  <View style={[styles.statCard, { borderColor: color + '55' }]}>
-    <Text style={styles.statEmoji}>{emoji}</Text>
+const StatCard = ({ icon, label, value, color }) => (
+  <View style={[styles.statCard, { borderTopColor: color, borderTopWidth: 3 }]}>
+    <View style={[styles.statIconBox, { backgroundColor: color + '15' }]}>
+      <Ionicons name={icon} size={18} color={color} />
+    </View>
     <Text style={[styles.statValue, { color }]}>{value ?? '—'}</Text>
     <Text style={styles.statLabel}>{label}</Text>
   </View>
 );
 
-const MenuItem = ({ emoji, label, color, onPress }) => (
-  <TouchableOpacity style={[styles.menuItem, { borderColor: color + '44' }]} onPress={onPress} activeOpacity={0.75}>
-    <Text style={styles.menuEmoji}>{emoji}</Text>
+const MenuItem = ({ icon, label, color, onPress }) => (
+  <TouchableOpacity style={styles.menuItem} onPress={onPress} activeOpacity={0.7}>
+    <View style={[styles.menuIconBox, { backgroundColor: color + '15' }]}>
+      <Ionicons name={icon} size={22} color={color} />
+    </View>
     <Text style={styles.menuLabel}>{label}</Text>
   </TouchableOpacity>
 );
@@ -76,7 +81,7 @@ export default function DashboardScreen({ user, onLogout, navigation }) {
           <View style={styles.topLeft}>
             <NyxionLogo size={40} />
             <View style={styles.topText}>
-              <Text style={styles.greeting}>Welcome back 👋</Text>
+              <Text style={styles.greeting}>Welcome back</Text>
               <Text style={styles.userName}>{user?.full_name || user?.name || 'Admin'}</Text>
             </View>
           </View>
@@ -87,67 +92,141 @@ export default function DashboardScreen({ user, onLogout, navigation }) {
 
         {user?.school_name && (
           <View style={styles.schoolBanner}>
-            <Text style={styles.schoolName}>🏫 {user.school_name}</Text>
-            <Text style={styles.schoolRole}>{user.role?.replace('_', ' ').toUpperCase()}</Text>
+            <View style={styles.schoolBannerLeft}>
+              <Ionicons name="business-outline" size={16} color={colors.primary} />
+              <Text style={styles.schoolName}>{user.school_name}</Text>
+            </View>
+            <View style={styles.rolePill}>
+              <Text style={styles.schoolRole}>{user.role?.replace('_', ' ').toUpperCase()}</Text>
+            </View>
           </View>
         )}
 
         <Text style={styles.sectionTitle}>Overview</Text>
         <View style={styles.statsGrid}>
           {isSuperAdmin && stats.schools !== null && (
-            <StatCard emoji="🏫" label="Schools" value={stats.schools} color={colors.accent} />
+            <StatCard icon="business-outline" label="Schools" value={stats.schools} color={colors.accent} />
           )}
-          <StatCard emoji="👨‍🎓" label="Students" value={stats.students} color={colors.primary} />
-          <StatCard emoji="👨‍🏫" label="Teachers" value={stats.teachers} color="#FF9800" />
-          <StatCard emoji="✅" label="Fees Paid" value={stats.feesPaid} color={colors.success} />
-          <StatCard emoji="⏳" label="Pending" value={stats.feesPending} color={colors.error} />
+          <StatCard icon="people-outline" label="Students" value={stats.students} color={colors.primary} />
+          <StatCard icon="person-outline" label="Teachers" value={stats.teachers} color={colors.warning} />
+          <StatCard icon="checkmark-circle-outline" label="Fees Paid" value={stats.feesPaid} color={colors.success} />
+          <StatCard icon="time-outline" label="Pending" value={stats.feesPending} color={colors.error} />
         </View>
 
         {isSuperAdmin && (
           <>
             <Text style={styles.sectionTitle}>Super Admin</Text>
             <View style={styles.menuGrid}>
-              <MenuItem emoji="🏫" label="Schools" color={colors.accent} onPress={() => navigation.navigate('Schools')} />
+              <MenuItem icon="business-outline" label="Schools" color={colors.accent} onPress={() => navigation.navigate('Schools')} />
             </View>
           </>
         )}
 
         <Text style={styles.sectionTitle}>Manage</Text>
         <View style={styles.menuGrid}>
-          <MenuItem emoji="👨‍🎓" label="Students" color={colors.primary} onPress={() => navigation.navigate('Students')} />
-          <MenuItem emoji="👨‍🏫" label="Teachers" color="#FF9800" onPress={() => navigation.navigate('Teachers')} />
-          <MenuItem emoji="✅" label="Attendance" color={colors.success} onPress={() => navigation.navigate('Attendance')} />
-          <MenuItem emoji="💰" label="Fees" color="#9C27B0" onPress={() => navigation.navigate('Fees')} />
-          <MenuItem emoji="📚" label="Academics" color={colors.accent} onPress={() => navigation.navigate('Academics')} />
-          <MenuItem emoji="📢" label="Notices" color="#00BCD4" onPress={() => navigation.navigate('Notices')} />
-          <MenuItem emoji="📊" label="Results" color="#E91E63" onPress={() => navigation.navigate('Results')} />
-          <MenuItem emoji="🕐" label="Timetable" color="#FF5722" onPress={() => navigation.navigate('Timetable')} />
-          <MenuItem emoji="🤖" label="AI Tools" color={colors.primary} onPress={() => navigation.navigate('AITools')} />
+          <MenuItem icon="people-outline" label="Students" color={colors.primary} onPress={() => navigation.navigate('Students')} />
+          <MenuItem icon="person-outline" label="Teachers" color={colors.warning} onPress={() => navigation.navigate('Teachers')} />
+          <MenuItem icon="checkmark-circle-outline" label="Attendance" color={colors.success} onPress={() => navigation.navigate('Attendance')} />
+          <MenuItem icon="card-outline" label="Fees" color="#8B5CF6" onPress={() => navigation.navigate('Fees')} />
+          <MenuItem icon="book-outline" label="Academics" color="#0EA5E9" onPress={() => navigation.navigate('Academics')} />
+          <MenuItem icon="megaphone-outline" label="Notices" color="#06B6D4" onPress={() => navigation.navigate('Notices')} />
+          <MenuItem icon="bar-chart-outline" label="Results" color="#F43F5E" onPress={() => navigation.navigate('Results')} />
+          <MenuItem icon="time-outline" label="Timetable" color="#F97316" onPress={() => navigation.navigate('Timetable')} />
+          <MenuItem icon="sparkles-outline" label="AI Tools" color={colors.primary} onPress={() => navigation.navigate('AITools')} />
         </View>
+
+        <View style={{ height: spacing.xl }} />
       </ScrollView>
     </ScreenWrapper>
   );
 }
 
 const styles = StyleSheet.create({
-  topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg },
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
   topLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   topText: {},
   greeting: { color: colors.textMuted, fontSize: fonts.sizes.xs },
-  userName: { color: colors.text, fontSize: fonts.sizes.md, fontWeight: 'bold' },
-  logoutBtn: { backgroundColor: colors.error + '22', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20 },
-  logoutText: { color: colors.error, fontSize: 13, fontWeight: '600' },
-  schoolBanner: { marginHorizontal: spacing.lg, backgroundColor: colors.surface, borderRadius: 12, padding: spacing.md, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: colors.border, marginBottom: spacing.sm },
+  userName: { color: colors.text, fontSize: fonts.sizes.md, fontWeight: '700' },
+  logoutBtn: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  logoutText: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
+  schoolBanner: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: spacing.md,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  schoolBannerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   schoolName: { color: colors.text, fontSize: 14, fontWeight: '600' },
+  rolePill: { backgroundColor: colors.primary + '15', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
   schoolRole: { color: colors.primary, fontSize: 11, fontWeight: '700' },
-  sectionTitle: { color: colors.textMuted, fontSize: 12, fontWeight: '700', paddingHorizontal: spacing.lg, marginTop: spacing.md, marginBottom: spacing.sm, letterSpacing: 1, textTransform: 'uppercase' },
+  sectionTitle: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: spacing.lg, gap: 10 },
-  statCard: { width: '47%', backgroundColor: colors.surface, borderRadius: 16, padding: spacing.md, alignItems: 'center', borderWidth: 1, marginBottom: 4 },
-  statEmoji: { fontSize: 24, marginBottom: 6 },
-  statValue: { fontSize: fonts.sizes.xl, fontWeight: 'bold' },
-  statLabel: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
-  menuGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: spacing.lg, gap: 12, paddingBottom: spacing.md },
-  menuItem: { width: '30%', backgroundColor: colors.surface, borderRadius: 16, padding: spacing.md, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
-  menuEmoji: { fontSize: 28, marginBottom: 8 },
-  menuLabel: { color: colors.text, fontSize: 12, fontWeight: '600', textAlign: 'center' },
+  statCard: {
+    width: '47%',
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    padding: spacing.md,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 4,
+  },
+  statIconBox: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  statValue: { fontSize: fonts.sizes.xl, fontWeight: '800' },
+  statLabel: { color: colors.textMuted, fontSize: 11, marginTop: 2, fontWeight: '500' },
+  menuGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: spacing.lg,
+    gap: 10,
+    paddingBottom: spacing.sm,
+  },
+  menuItem: {
+    width: '30%',
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 8,
+  },
+  menuIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuLabel: { color: colors.text, fontSize: 11, fontWeight: '600', textAlign: 'center' },
 });

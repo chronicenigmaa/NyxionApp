@@ -1,5 +1,4 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
 import Svg, { Rect, Circle } from 'react-native-svg';
 
 export default function NyxionLogo({ size = 60 }) {
@@ -22,7 +21,7 @@ export default function NyxionLogo({ size = 60 }) {
   ];
   return (
     <Svg width={size} height={size} viewBox="0 0 100 100">
-      <Rect width="100" height="100" rx="22" fill="#080808" />
+      <Rect width="100" height="100" rx="22" fill="#1A56DB" />
       {dots.map((d, i) => (
         <Circle key={i} cx={d.cx} cy={d.cy} r="4" fill="#FFFFFF" opacity={d.opacity} />
       ))}

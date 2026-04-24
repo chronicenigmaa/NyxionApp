@@ -1,6 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, Modal, ScrollView, Alert, Linking, Platform } from 'react-native';
+import {
+  View, Text, FlatList, StyleSheet, TouchableOpacity,
+  RefreshControl, Modal, ScrollView, Alert, Linking,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system';
 import { colors, spacing, fonts } from '../../constants/theme';
 import LoadingScreen from '../../components/LoadingScreen';
 import ErrorScreen from '../../components/ErrorScreen';
@@ -8,6 +14,13 @@ import ScreenHeader from '../../components/ScreenHeader';
 
 const BASE = 'https://nyxion-learnspace-production.up.railway.app/api/v1';
 const BASE_URL = 'https://nyxion-learnspace-production.up.railway.app';
+
+function fileIcon(name) {
+  if (name?.endsWith('.pdf')) return 'document-outline';
+  if (name?.match(/\.(jpg|jpeg|png|gif)$/i)) return 'image-outline';
+  if (name?.match(/\.(doc|docx)$/i)) return 'document-text-outline';
+  return 'attach-outline';
+}
 
 export default function NotesScreen({ navigation }) {
   const [notes, setNotes] = useState([]);
@@ -37,29 +50,54 @@ export default function NotesScreen({ navigation }) {
     try {
       setDownloading(file.id);
       const token = await AsyncStorage.getItem('learn_token');
-      // Fetch the file as blob then open
-      const url = `${BASE_URL}/api/v1/notes/${noteId}/files/${file.id}/download`;
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || `HTTP ${res.status}`);
+
+      const candidateUrls = [
+        file.download_url,
+        file.url,
+        `${BASE_URL}/api/v1/notes/${noteId}/files/${file.id}/download`,
+        `${BASE_URL}/api/v1/notes/${noteId}/files/${file.id}`,
+      ].filter(Boolean);
+
+      let downloadUrl = null;
+      let lastError = 'Unable to download file.';
+      for (const url of candidateUrls) {
+        try {
+          const res = await fetch(url, {
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            lastError = err.detail || `HTTP ${res.status}`;
+            continue;
+          }
+          downloadUrl = res.url || url;
+          break;
+        } catch (innerError) {
+          lastError = innerError.message;
+        }
       }
-      // Get content type and try to open
-      const contentType = res.headers.get('content-type') || 'application/octet-stream';
-      // For mobile, best we can do is open the URL with token in header via fetch
-      // Since we can't pass headers to browser, alert the user with file info
-      Alert.alert(
-        '📎 File Ready',
-        `File: ${file.name}\nSize: ${(file.size / 1024).toFixed(1)} KB\n\nNote: To download files, please use the web app at nyxion-learnspace.vercel.app`,
-        [
-          { text: 'Open Web App', onPress: () => Linking.openURL('https://nyxion-learnspace.vercel.app') },
-          { text: 'OK' },
-        ]
+
+      if (!downloadUrl) throw new Error(lastError);
+
+      const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const localUri = FileSystem.documentDirectory + sanitizedName;
+
+      const downloadResumable = FileSystem.createDownloadResumable(
+        downloadUrl,
+        localUri,
+        { headers: token ? { Authorization: `Bearer ${token}` } : undefined }
       );
+
+      const { uri } = await downloadResumable.downloadAsync();
+
+      if (await Linking.canOpenURL(uri)) {
+        await Linking.openURL(uri);
+        Alert.alert('Download Complete', `File saved and opened: ${file.name}`);
+      } else {
+        Alert.alert('Download Complete', `File saved to: ${uri}`);
+      }
     } catch (e) {
-      Alert.alert('Error', e.message);
+      Alert.alert('Download Failed', e.message);
     } finally {
       setDownloading(null);
     }
@@ -69,34 +107,44 @@ export default function NotesScreen({ navigation }) {
   if (error) return <ErrorScreen message={error} onRetry={load} />;
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScreenHeader title="Notes" onBack={() => navigation.goBack()} />
 
       <FlatList
         data={notes}
         keyExtractor={i => i.id}
         contentContainerStyle={styles.list}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor="#FF9800" />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />}
         renderItem={({ item }) => (
           <TouchableOpacity style={styles.card} onPress={() => setSelected(item)} activeOpacity={0.8}>
             <View style={styles.cardTop}>
               <Text style={styles.name}>{item.title}</Text>
               <Text style={styles.date}>{item.created_at?.split('T')[0]}</Text>
             </View>
-            {item.subject && <Text style={styles.subject}>{item.subject}</Text>}
+            {item.subject && (
+              <View style={styles.subjectPill}>
+                <Text style={styles.subjectPillText}>{item.subject}</Text>
+              </View>
+            )}
             {item.description && <Text style={styles.preview} numberOfLines={2}>{item.description}</Text>}
             <View style={styles.cardFooter}>
-              {item.files?.length > 0
-                ? <Text style={styles.files}>📎 {item.files.length} file{item.files.length > 1 ? 's' : ''}</Text>
-                : <Text style={styles.noFiles}>No attachments</Text>}
-              <Text style={styles.tapHint}>Tap to read →</Text>
+              {item.files?.length > 0 ? (
+                <View style={styles.attachmentRow}>
+                  <Ionicons name="attach-outline" size={14} color={colors.primary} />
+                  <Text style={styles.files}>{item.files.length} attachment{item.files.length > 1 ? 's' : ''}</Text>
+                </View>
+              ) : (
+                <Text style={styles.noFiles}>No attachments</Text>
+              )}
+              <Text style={styles.tapHint}>View</Text>
             </View>
           </TouchableOpacity>
         )}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyEmoji}>📓</Text>
-            <Text style={styles.emptyText}>No notes yet{'\n'}Notes shared by your teacher appear here</Text>
+            <Ionicons name="journal-outline" size={48} color={colors.border} />
+            <Text style={styles.emptyText}>No notes yet</Text>
+            <Text style={styles.emptySubtext}>Notes shared by your teacher will appear here</Text>
           </View>
         }
       />
@@ -106,16 +154,29 @@ export default function NotesScreen({ navigation }) {
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{selected?.title}</Text>
-              <TouchableOpacity onPress={() => setSelected(null)}>
-                <Text style={styles.modalClose}>✕</Text>
+              <TouchableOpacity onPress={() => setSelected(null)} style={styles.closeBtn}>
+                <Ionicons name="close" size={20} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
             <ScrollView showsVerticalScrollIndicator={false}>
               <View style={styles.metaRow}>
-                {selected?.subject && <View style={styles.subjectTag}><Text style={styles.subjectTagText}>{selected.subject}</Text></View>}
-                {selected?.class_name && <View style={styles.classTag}><Text style={styles.classTagText}>Class {selected.class_name}</Text></View>}
+                {selected?.subject && (
+                  <View style={styles.subjectTag}>
+                    <Text style={styles.subjectTagText}>{selected.subject}</Text>
+                  </View>
+                )}
+                {selected?.class_name && (
+                  <View style={styles.classTag}>
+                    <Text style={styles.classTagText}>Class {selected.class_name}</Text>
+                  </View>
+                )}
               </View>
-              {selected?.teacher_name && <Text style={styles.teacherName}>👨‍🏫 {selected.teacher_name}</Text>}
+              {selected?.teacher_name && (
+                <View style={styles.teacherRow}>
+                  <Ionicons name="person-outline" size={14} color={colors.textMuted} />
+                  <Text style={styles.teacherName}>{selected.teacher_name}</Text>
+                </View>
+              )}
               <Text style={styles.postedDate}>{selected?.created_at?.split('T')[0]}</Text>
               {selected?.description && (
                 <>
@@ -125,7 +186,7 @@ export default function NotesScreen({ navigation }) {
               )}
               {selected?.files?.length > 0 && (
                 <>
-                  <Text style={styles.sectionLabel}>📎 Attachments ({selected.files.length})</Text>
+                  <Text style={styles.sectionLabel}>Attachments ({selected.files.length})</Text>
                   {selected.files.map((file) => (
                     <TouchableOpacity
                       key={file.id}
@@ -133,19 +194,17 @@ export default function NotesScreen({ navigation }) {
                       onPress={() => downloadFile(selected.id, file)}
                     >
                       <View style={styles.fileInfo}>
-                        <Text style={styles.fileIcon}>
-                          {file.name?.endsWith('.pdf') ? '📄' :
-                           file.name?.match(/\.(jpg|jpeg|png|gif)$/i) ? '🖼️' :
-                           file.name?.match(/\.(doc|docx)$/i) ? '📝' : '📎'}
-                        </Text>
+                        <View style={styles.fileIconBox}>
+                          <Ionicons name={fileIcon(file.name)} size={20} color={colors.primary} />
+                        </View>
                         <View>
                           <Text style={styles.fileName}>{file.name}</Text>
                           {file.size && <Text style={styles.fileSize}>{(file.size / 1024).toFixed(1)} KB</Text>}
                         </View>
                       </View>
-                      <Text style={styles.downloadBtn}>
-                        {downloading === file.id ? '⏳' : '⬇️'}
-                      </Text>
+                      {downloading === file.id
+                        ? <Ionicons name="hourglass-outline" size={18} color={colors.textMuted} />
+                        : <Ionicons name="download-outline" size={18} color={colors.primary} />}
                     </TouchableOpacity>
                   ))}
                 </>
@@ -155,44 +214,79 @@ export default function NotesScreen({ navigation }) {
           </View>
         </View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl, paddingTop: spacing.sm },
-  card: { backgroundColor: colors.surface, borderRadius: 14, padding: spacing.md, marginBottom: spacing.sm, borderWidth: 1, borderColor: colors.border },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  name: { color: colors.text, fontSize: 15, fontWeight: '700', flex: 1 },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6, alignItems: 'flex-start' },
+  name: { color: colors.text, fontSize: 15, fontWeight: '700', flex: 1, marginRight: 8 },
   date: { color: colors.textMuted, fontSize: 12 },
-  subject: { color: '#FF9800', fontSize: 12, fontWeight: '600', marginBottom: 4 },
+  subjectPill: { alignSelf: 'flex-start', backgroundColor: colors.primary + '15', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20, marginBottom: 6 },
+  subjectPillText: { color: colors.primary, fontSize: 12, fontWeight: '600' },
   preview: { color: colors.textMuted, fontSize: 13, lineHeight: 18, marginBottom: 8 },
   cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  files: { color: '#FF9800', fontSize: 12 },
+  attachmentRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  files: { color: colors.primary, fontSize: 12, fontWeight: '500' },
   noFiles: { color: colors.textMuted, fontSize: 12 },
-  tapHint: { color: colors.primary, fontSize: 11 },
-  empty: { alignItems: 'center', marginTop: 60 },
-  emptyEmoji: { fontSize: 48, marginBottom: 12 },
-  emptyText: { color: colors.textMuted, fontSize: 15, textAlign: 'center', lineHeight: 24 },
-  modalOverlay: { flex: 1, backgroundColor: '#000000AA', justifyContent: 'flex-end' },
-  modalCard: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: spacing.lg, maxHeight: '92%' },
+  tapHint: { color: colors.primary, fontSize: 12, fontWeight: '600' },
+  empty: { alignItems: 'center', marginTop: 80, gap: 12 },
+  emptyText: { color: colors.text, fontSize: 16, fontWeight: '600' },
+  emptySubtext: { color: colors.textMuted, fontSize: 13, textAlign: 'center' },
+  modalOverlay: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
+  modalCard: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: spacing.lg,
+    maxHeight: '92%',
+    borderTopWidth: 1,
+    borderColor: colors.border,
+  },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
-  modalTitle: { color: colors.text, fontSize: 18, fontWeight: 'bold', flex: 1 },
-  modalClose: { color: colors.textMuted, fontSize: 20, paddingLeft: 12 },
+  modalTitle: { color: colors.text, fontSize: 18, fontWeight: '700', flex: 1, marginRight: 12 },
+  closeBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
   metaRow: { flexDirection: 'row', gap: 8, marginBottom: spacing.sm, flexWrap: 'wrap' },
-  subjectTag: { backgroundColor: '#FF980022', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20 },
-  subjectTagText: { color: '#FF9800', fontSize: 12, fontWeight: '600' },
-  classTag: { backgroundColor: colors.primary + '22', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20 },
-  classTagText: { color: colors.primary, fontSize: 12, fontWeight: '600' },
-  teacherName: { color: colors.textMuted, fontSize: 13, marginBottom: 2 },
+  subjectTag: { backgroundColor: colors.primary + '15', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20 },
+  subjectTagText: { color: colors.primary, fontSize: 12, fontWeight: '600' },
+  classTag: { backgroundColor: colors.surface, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: colors.border },
+  classTagText: { color: colors.text, fontSize: 12, fontWeight: '600' },
+  teacherRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
+  teacherName: { color: colors.textMuted, fontSize: 13 },
   postedDate: { color: colors.textMuted, fontSize: 12, marginBottom: spacing.md },
-  sectionLabel: { color: colors.textMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: spacing.md, marginBottom: spacing.sm },
+  sectionLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
   noteContent: { color: colors.text, fontSize: 15, lineHeight: 24, marginBottom: spacing.md },
-  fileRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.background, borderRadius: 12, padding: spacing.md, marginBottom: spacing.sm, borderWidth: 1, borderColor: colors.border },
-  fileInfo: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  fileIcon: { fontSize: 24, marginRight: spacing.sm },
+  fileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  fileInfo: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 },
+  fileIconBox: { width: 40, height: 40, borderRadius: 10, backgroundColor: colors.primary + '15', alignItems: 'center', justifyContent: 'center' },
   fileName: { color: colors.text, fontSize: 13, fontWeight: '600', maxWidth: 200 },
   fileSize: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
-  downloadBtn: { color: colors.accent, fontSize: 18 },
 });

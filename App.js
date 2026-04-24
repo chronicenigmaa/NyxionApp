@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar, StyleSheet, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -28,7 +29,7 @@ import EventsScreen from './app/learnspace/EventsScreen';
 import LearnAttendanceScreen from './app/learnspace/AttendanceScreen';
 
 const Stack = createStackNavigator();
-const screenOptions = { headerShown: false, gestureEnabled: true, cardStyle: { backgroundColor: '#0A0A0F' } };
+const screenOptions = { headerShown: false, gestureEnabled: true, cardStyle: { backgroundColor: '#FFFFFF' } };
 
 function EduOSStack({ route }) {
   const { user, onLogout } = route.params;
@@ -79,9 +80,9 @@ export default function App() {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    StatusBar.setBarStyle('light-content');
+    StatusBar.setBarStyle('dark-content');
     if (Platform.OS === 'android') {
-      StatusBar.setBackgroundColor('#0A0A0F');
+      StatusBar.setBackgroundColor('#FFFFFF');
       StatusBar.setTranslucent(false);
     }
   }, []);
@@ -94,37 +95,39 @@ export default function App() {
 
   return (
     <GestureHandlerRootView style={styles.root}>
-      <NavigationContainer>
-        <Stack.Navigator screenOptions={{ headerShown: false, gestureEnabled: false, cardStyle: { backgroundColor: '#0A0A0F' } }}>
-          <Stack.Screen name="Launcher" component={LauncherScreen} />
-          <Stack.Screen name="EduLogin">
-            {props => (
-              <EduLoginScreen
-                onLogin={(data) => {
-                  const u = data.user || data;
-                  setUser(u);
-                  props.navigation.replace('EduOS', { user: u, onLogout: () => handleLogout(props.navigation) });
-                }}
-              />
-            )}
-          </Stack.Screen>
-          <Stack.Screen name="LearnLogin">
-            {props => (
-              <LearnLoginScreen
-                onLogin={(data) => {
-                  const u = data.user || data;
-                  setUser(u);
-                  props.navigation.replace('Learnspace', { user: u, onLogout: () => handleLogout(props.navigation) });
-                }}
-              />
-            )}
-          </Stack.Screen>
-          <Stack.Screen name="EduOS" component={EduOSStack} />
-          <Stack.Screen name="Learnspace" component={LearnStack} />
-        </Stack.Navigator>
-      </NavigationContainer>
+      <SafeAreaProvider>
+        <NavigationContainer>
+          <Stack.Navigator screenOptions={{ headerShown: false, gestureEnabled: false, cardStyle: { backgroundColor: '#FFFFFF' } }}>
+            <Stack.Screen name="Launcher" component={LauncherScreen} />
+            <Stack.Screen name="EduLogin">
+              {props => (
+                <EduLoginScreen
+                  onLogin={(data) => {
+                    const u = data.user || data;
+                    setUser(u);
+                    props.navigation.replace('EduOS', { user: u, onLogout: () => handleLogout(props.navigation) });
+                  }}
+                />
+              )}
+            </Stack.Screen>
+            <Stack.Screen name="LearnLogin">
+              {props => (
+                <LearnLoginScreen
+                  onLogin={(data) => {
+                    const u = data.user || data;
+                    setUser(u);
+                    props.navigation.replace('Learnspace', { user: u, onLogout: () => handleLogout(props.navigation) });
+                  }}
+                />
+              )}
+            </Stack.Screen>
+            <Stack.Screen name="EduOS" component={EduOSStack} />
+            <Stack.Screen name="Learnspace" component={LearnStack} />
+          </Stack.Navigator>
+        </NavigationContainer>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
 
-const styles = StyleSheet.create({ root: { flex: 1, backgroundColor: '#0A0A0F' } });
+const styles = StyleSheet.create({ root: { flex: 1, backgroundColor: '#FFFFFF' } });

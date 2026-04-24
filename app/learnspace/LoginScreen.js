@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  SafeAreaView, ActivityIndicator, Alert, ScrollView,
+  StatusBar, ActivityIndicator, Alert, ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, fonts } from '../../constants/theme';
+import NyxionLogo from '../../components/NyxionLogo';
 
 const BASE = 'https://nyxion-learnspace-production.up.railway.app/api/v1';
 
@@ -44,7 +46,7 @@ export default function LearnLoginScreen({ onLogin }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Registration failed');
-      Alert.alert('Success', 'Account created! Please login.', [
+      Alert.alert('Success', 'Account created. Please sign in.', [
         { text: 'OK', onPress: () => setMode('login') },
       ]);
     } catch (e) {
@@ -53,10 +55,11 @@ export default function LearnLoginScreen({ onLogin }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
-          <View style={styles.logo}><Text style={styles.logoText}>L</Text></View>
+          <NyxionLogo size={72} />
           <Text style={styles.title}>Learnspace</Text>
           <Text style={styles.subtitle}>Student Learning Portal</Text>
         </View>
@@ -66,7 +69,7 @@ export default function LearnLoginScreen({ onLogin }) {
             style={[styles.tab, mode === 'login' && styles.tabActive]}
             onPress={() => setMode('login')}
           >
-            <Text style={[styles.tabText, mode === 'login' && styles.tabTextActive]}>Login</Text>
+            <Text style={[styles.tabText, mode === 'login' && styles.tabTextActive]}>Sign In</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.tab, mode === 'register' && styles.tabActive]}
@@ -80,23 +83,34 @@ export default function LearnLoginScreen({ onLogin }) {
           <>
             <Text style={styles.label}>Full Name</Text>
             <TextInput
-              style={styles.input} value={name} onChangeText={setName}
-              placeholder="Your name" placeholderTextColor={colors.textMuted}
+              style={styles.input}
+              value={name}
+              onChangeText={setName}
+              placeholder="Your full name"
+              placeholderTextColor={colors.textMuted}
             />
           </>
         )}
 
-        <Text style={styles.label}>Email</Text>
+        <Text style={styles.label}>Email Address</Text>
         <TextInput
-          style={styles.input} value={email} onChangeText={setEmail}
-          keyboardType="email-address" autoCapitalize="none"
-          placeholder="your@email.com" placeholderTextColor={colors.textMuted}
+          style={styles.input}
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          placeholder="your@email.com"
+          placeholderTextColor={colors.textMuted}
         />
 
         <Text style={styles.label}>Password</Text>
         <TextInput
-          style={styles.input} value={password} onChangeText={setPassword}
-          secureTextEntry placeholder="••••••••" placeholderTextColor={colors.textMuted}
+          style={styles.input}
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          placeholder="Enter your password"
+          placeholderTextColor={colors.textMuted}
         />
 
         <TouchableOpacity
@@ -105,7 +119,7 @@ export default function LearnLoginScreen({ onLogin }) {
           disabled={loading}
         >
           {loading
-            ? <ActivityIndicator color="#000" />
+            ? <ActivityIndicator color="#fff" />
             : <Text style={styles.btnText}>{mode === 'login' ? 'Sign In' : 'Create Account'}</Text>}
         </TouchableOpacity>
 
@@ -121,35 +135,40 @@ export default function LearnLoginScreen({ onLogin }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  scroll: { padding: spacing.lg, paddingBottom: spacing.xxl },
+  scroll: { flexGrow: 1, padding: spacing.lg, paddingBottom: spacing.xxl },
   header: { alignItems: 'center', marginTop: spacing.xl, marginBottom: spacing.xl },
-  logo: {
-    width: 72, height: 72, borderRadius: 36,
-    backgroundColor: colors.accent,
-    alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md,
-  },
-  logoText: { color: '#000', fontSize: 32, fontWeight: 'bold' },
-  title: { color: colors.text, fontSize: fonts.sizes.xl, fontWeight: 'bold' },
+  title: { color: colors.text, fontSize: fonts.sizes.xl, fontWeight: '800', marginTop: spacing.md, letterSpacing: 0.5 },
   subtitle: { color: colors.textMuted, fontSize: fonts.sizes.sm, marginTop: 4 },
   tabs: {
-    flexDirection: 'row', backgroundColor: colors.surface,
-    borderRadius: 12, padding: 4, marginBottom: spacing.md,
-    borderWidth: 1, borderColor: colors.border,
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   tab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10 },
-  tabActive: { backgroundColor: colors.accent },
-  tabText: { color: colors.textMuted, fontWeight: '600' },
-  tabTextActive: { color: '#000' },
-  label: { color: colors.textMuted, fontSize: 13, marginBottom: 6, marginTop: 16 },
+  tabActive: { backgroundColor: colors.primary },
+  tabText: { color: colors.textMuted, fontWeight: '600', fontSize: 14 },
+  tabTextActive: { color: '#fff' },
+  label: { color: colors.text, fontSize: 13, fontWeight: '600', marginBottom: 6, marginTop: spacing.md },
   input: {
-    backgroundColor: colors.surface, borderRadius: 12,
-    borderWidth: 1, borderColor: colors.border,
-    padding: 14, color: colors.text, fontSize: 15,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 14,
+    color: colors.text,
+    fontSize: 15,
   },
   btn: {
-    backgroundColor: colors.accent, borderRadius: 12,
-    padding: 16, alignItems: 'center', marginTop: 28,
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: spacing.lg,
   },
-  btnText: { color: '#000', fontSize: 16, fontWeight: '700' },
-  hint: { color: colors.textMuted, fontSize: 12, textAlign: 'center', marginTop: 16 },
+  btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  hint: { color: colors.textMuted, fontSize: 12, textAlign: 'center', marginTop: spacing.md },
 });
