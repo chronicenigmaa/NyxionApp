@@ -206,7 +206,7 @@ export default function ExamsScreen({ navigation, route }) {
           </View>
         </View>
       </Modal>
-    </View>
+    </ScreenWrapper>
   );
 }
 
