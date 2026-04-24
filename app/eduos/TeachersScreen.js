@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, fonts } from '../../constants/theme';
 import LoadingScreen from '../../components/LoadingScreen';
 import ErrorScreen from '../../components/ErrorScreen';
+import ScreenWrapper from '../../components/ScreenWrapper';
 
 const BASE = 'https://nyxion-eduos-production-63b9.up.railway.app/api/v1';
 
@@ -116,7 +117,7 @@ export default function TeachersScreen({ navigation }) {
   if (error) return <ErrorScreen message={error} onRetry={load} />;
 
   return (
-    <View style={styles.container}>
+    <ScreenWrapper style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}><Text style={styles.back}>← Back</Text></TouchableOpacity>
         <Text style={styles.title}>Teachers</Text>
@@ -226,7 +227,7 @@ export default function TeachersScreen({ navigation }) {
           </View>
         </View>
       </Modal>
-    </View>
+    </ScreenWrapper>
   );
 }
 
