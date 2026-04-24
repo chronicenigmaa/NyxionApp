@@ -23,6 +23,7 @@ export default function SchoolsScreen({ navigation }) {
   const [form, setForm] = useState({
     name: '', code: '', address: '', phone: '', email: '', package: 'starter',
   });
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => { load(); }, []);
 
@@ -56,6 +57,55 @@ export default function SchoolsScreen({ navigation }) {
       load();
     } catch (e) { Alert.alert('Error', e.message); }
     finally { setSaving(false); }
+  };
+
+  const updateSchool = async () => {
+    if (!selected || !selected.name || !selected.code) return Alert.alert('Required', 'Name and code are required');
+    setSaving(true);
+    try {
+      const token = await AsyncStorage.getItem('token');
+      const res = await fetch(`${BASE}/schools/${selected.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          name: selected.name,
+          code: selected.code,
+          address: selected.address,
+          phone: selected.phone,
+          email: selected.email,
+          package: selected.package,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to update school');
+      Alert.alert('✅ Updated', `${selected.name} updated successfully`);
+      setEditing(false);
+      setSelected(null);
+      load();
+    } catch (e) { Alert.alert('Error', e.message); }
+    finally { setSaving(false); }
+  };
+
+  const deleteSchool = async () => {
+    if (!selected) return;
+    Alert.alert('Confirm Delete', `Delete ${selected.name}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        setSaving(true);
+        try {
+          const token = await AsyncStorage.getItem('token');
+          const res = await fetch(`${BASE}/schools/${selected.id}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (!res.ok) throw new Error('Failed to delete school');
+          Alert.alert('Deleted', `${selected.name} has been removed.`);
+          setSelected(null);
+          load();
+        } catch (e) { Alert.alert('Error', e.message); }
+        finally { setSaving(false); }
+      } },
+    ]);
   };
 
   if (loading) return <LoadingScreen message="Loading schools..." />;
@@ -101,29 +151,81 @@ export default function SchoolsScreen({ navigation }) {
       />
 
       {/* View School Modal */}
-      <Modal visible={!!selected} animationType="slide" transparent onRequestClose={() => setSelected(null)}>
+      <Modal visible={!!selected} animationType="slide" transparent onRequestClose={() => { setSelected(null); setEditing(false); }}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{selected?.name}</Text>
-              <TouchableOpacity onPress={() => setSelected(null)}>
+              <Text style={styles.modalTitle}>{editing ? `Edit ${selected?.name}` : selected?.name}</Text>
+              <TouchableOpacity onPress={() => { setSelected(null); setEditing(false); }}>
                 <Text style={styles.modalClose}>✕</Text>
               </TouchableOpacity>
             </View>
-            <ScrollView>
-              {[
-                ['Code', selected?.code],
-                ['Package', selected?.package?.toUpperCase()],
-                ['Address', selected?.address],
-                ['Phone', selected?.phone],
-                ['Email', selected?.email],
-                ['Status', selected?.is_active ? '✅ Active' : '❌ Inactive'],
-              ].filter(([, v]) => v).map(([label, value]) => (
-                <View key={label} style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>{label}</Text>
-                  <Text style={styles.detailValue}>{value}</Text>
-                </View>
-              ))}
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {editing ? (
+                <>
+                  {[
+                    ['School Name *', 'name', 'default'],
+                    ['School Code *', 'code', 'default'],
+                    ['Address', 'address', 'default'],
+                    ['Phone', 'phone', 'phone-pad'],
+                    ['Email', 'email', 'email-address'],
+                  ].map(([label, key, kb]) => (
+                    <View key={key}>
+                      <Text style={styles.formLabel}>{label}</Text>
+                      <TextInput
+                        style={styles.formInput}
+                        value={selected?.[key] || ''}
+                        onChangeText={v => setSelected(prev => ({ ...prev, [key]: v }))}
+                        placeholder={label.replace(' *', '')}
+                        placeholderTextColor={colors.textMuted}
+                        keyboardType={kb}
+                        autoCapitalize={key === 'email' ? 'none' : 'words'}
+                      />
+                    </View>
+                  ))}
+                  <Text style={styles.formLabel}>Package</Text>
+                  <View style={styles.packageRow}>
+                    {['starter', 'growth', 'enterprise'].map(p => (
+                      <TouchableOpacity
+                        key={p}
+                        style={[styles.packageOption, selected?.package === p && styles.packageOptionActive]}
+                        onPress={() => setSelected(prev => ({ ...prev, package: p }))}
+                      >
+                        <Text style={[styles.packageOptionText, selected?.package === p && styles.packageOptionTextActive]}>
+                          {p.charAt(0).toUpperCase() + p.slice(1)}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <TouchableOpacity style={styles.saveBtn} onPress={updateSchool} disabled={saving}>
+                    {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>✅ Save Changes</Text>}
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  {[
+                    ['Code', selected?.code],
+                    ['Package', selected?.package?.toUpperCase()],
+                    ['Address', selected?.address],
+                    ['Phone', selected?.phone],
+                    ['Email', selected?.email],
+                    ['Status', selected?.is_active ? '✅ Active' : '❌ Inactive'],
+                  ].filter(([, v]) => v).map(([label, value]) => (
+                    <View key={label} style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>{label}</Text>
+                      <Text style={styles.detailValue}>{value}</Text>
+                    </View>
+                  ))}
+                  <View style={styles.modalActions}>
+                    <TouchableOpacity style={styles.actionBtn} onPress={() => setEditing(true)}>
+                      <Text style={styles.actionBtnText}>Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.actionBtn, styles.deleteBtn]} onPress={deleteSchool}>
+                      <Text style={[styles.actionBtnText, styles.deleteBtnText]}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
             </ScrollView>
           </View>
         </View>
@@ -219,4 +321,9 @@ const styles = StyleSheet.create({
   packageOptionTextActive: { color: '#fff' },
   saveBtn: { backgroundColor: colors.primary, borderRadius: 12, padding: 14, alignItems: 'center', marginTop: spacing.lg },
   saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  modalActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.lg },
+  actionBtn: { flex: 1, borderRadius: 12, padding: 14, alignItems: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, marginRight: 10 },
+  actionBtnText: { color: colors.text, fontSize: 14, fontWeight: '700' },
+  deleteBtn: { backgroundColor: colors.danger || '#E63946', borderColor: colors.danger || '#E63946', marginRight: 0, marginLeft: 10 },
+  deleteBtnText: { color: '#fff' },
 });

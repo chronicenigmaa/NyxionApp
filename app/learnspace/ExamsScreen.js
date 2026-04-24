@@ -124,7 +124,7 @@ export default function ExamsScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  header: { flexDirection: 'row', alignItems: 'center', padding: spacing.lg, paddingBottom: spacing.sm },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
   back: { color: colors.accent, fontSize: 16, marginRight: spacing.md },
   title: { flex: 1, color: colors.text, fontSize: fonts.sizes.lg, fontWeight: 'bold' },
   countBadge: { backgroundColor: colors.error + '33', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 12 },

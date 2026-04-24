@@ -15,6 +15,9 @@ const MenuItem = ({ icon, label, color, onPress }) => (
 );
 
 export default function LearnHomeScreen({ user, onNavigate, onLogout }) {
+  const isTeacher = user?.role === 'teacher';
+  const hasAiAccess = isTeacher || user?.package === 'growth' || user?.package === 'enterprise' || user?.ai_enabled;
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -22,7 +25,7 @@ export default function LearnHomeScreen({ user, onNavigate, onLogout }) {
           <View style={styles.topLeft}>
             <NyxionLogo size={40} />
             <View>
-              <Text style={styles.greeting}>Welcome back</Text>
+              <Text style={styles.greeting}>{isTeacher ? 'Teacher portal' : 'Welcome back'}</Text>
               <Text style={styles.userName}>{user?.name || user?.full_name || 'Student'}</Text>
             </View>
           </View>
@@ -31,11 +34,11 @@ export default function LearnHomeScreen({ user, onNavigate, onLogout }) {
           </TouchableOpacity>
         </View>
 
-        {user?.class_name && (
+        {(user?.class_name || isTeacher) && (
           <View style={styles.infoBanner}>
             <View style={styles.infoBannerLeft}>
-              <Ionicons name="library-outline" size={16} color={colors.primary} />
-              <Text style={styles.infoText}>{user.class_name}</Text>
+              <Ionicons name={isTeacher ? 'school-outline' : 'library-outline'} size={16} color={colors.primary} />
+              <Text style={styles.infoText}>{isTeacher ? (user?.assigned_sections?.join(', ') || 'Teacher section') : user.class_name}</Text>
             </View>
             {user.roll_number && (
               <View style={styles.rollPill}>
@@ -53,6 +56,7 @@ export default function LearnHomeScreen({ user, onNavigate, onLogout }) {
           <MenuItem icon="clipboard-outline" label="Exams" color={colors.error} onPress={() => onNavigate('Exams')} />
           <MenuItem icon="journal-outline" label="Notes" color={colors.warning} onPress={() => onNavigate('Notes')} />
           <MenuItem icon="calendar-outline" label="Events" color="#8B5CF6" onPress={() => onNavigate('Events')} />
+          {hasAiAccess && <MenuItem icon="sparkles-outline" label="AI Tools" color={colors.primary} onPress={() => onNavigate('LearnAITools')} />}
         </View>
 
         <View style={{ height: spacing.xl }} />

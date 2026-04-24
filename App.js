@@ -27,6 +27,7 @@ import ExamsScreen from './app/learnspace/ExamsScreen';
 import NotesScreen from './app/learnspace/NotesScreen';
 import EventsScreen from './app/learnspace/EventsScreen';
 import LearnAttendanceScreen from './app/learnspace/AttendanceScreen';
+import LearnAIToolsScreen from './app/learnspace/AIToolsScreen';
 
 const Stack = createStackNavigator();
 const screenOptions = { headerShown: false, gestureEnabled: true, cardStyle: { backgroundColor: '#FFFFFF' } };
@@ -72,6 +73,7 @@ function LearnStack({ route }) {
       <Stack.Screen name="Notes" component={NotesScreen} />
       <Stack.Screen name="Events" component={EventsScreen} />
       <Stack.Screen name="LearnAttendance" component={LearnAttendanceScreen} />
+      <Stack.Screen name="LearnAITools" component={LearnAIToolsScreen} />
     </Stack.Navigator>
   );
 }

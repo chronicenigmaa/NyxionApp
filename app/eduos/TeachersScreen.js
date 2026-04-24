@@ -14,6 +14,10 @@ export default function TeachersScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ full_name: '', email: '', subject: '', qualification: '', class_name: '', section: '', salary: '' });
 
   useEffect(() => { load(); }, []);
   useEffect(() => {
@@ -39,6 +43,75 @@ export default function TeachersScreen({ navigation }) {
     finally { setLoading(false); setRefreshing(false); }
   };
 
+  const submitTeacher = async () => {
+    if (!form.full_name || !form.email) return Alert.alert('Required', 'Name and email are required');
+    setSaving(true);
+    try {
+      const token = await AsyncStorage.getItem('token');
+      const res = await fetch(`${BASE}/teachers/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to add teacher');
+      Alert.alert('✅ Added', `${form.full_name} added successfully`);
+      setShowAdd(false);
+      setForm({ full_name: '', email: '', subject: '', qualification: '', class_name: '', section: '', salary: '' });
+      load();
+    } catch (e) { Alert.alert('Error', e.message); }
+    finally { setSaving(false); }
+  };
+
+  const updateTeacher = async () => {
+    if (!selected) return;
+    setSaving(true);
+    try {
+      const token = await AsyncStorage.getItem('token');
+      const res = await fetch(`${BASE}/teachers/${selected.id}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          full_name: selected.full_name,
+          email: selected.email,
+          subject: selected.subject,
+          qualification: selected.qualification,
+          class_name: selected.class_name,
+          section: selected.section,
+          salary: selected.salary,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to update teacher');
+      Alert.alert('✅ Updated', `${selected.full_name} updated successfully`);
+      setSelected(null);
+      load();
+    } catch (e) { Alert.alert('Error', e.message); }
+    finally { setSaving(false); }
+  };
+
+  const deleteTeacher = async () => {
+    if (!selected) return;
+    Alert.alert('Confirm Delete', `Delete ${selected.full_name}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        setSaving(true);
+        try {
+          const token = await AsyncStorage.getItem('token');
+          const res = await fetch(`${BASE}/teachers/${selected.id}/`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (!res.ok) throw new Error('Failed to delete teacher');
+          Alert.alert('Deleted', `${selected.full_name} has been removed.`);
+          setSelected(null);
+          load();
+        } catch (e) { Alert.alert('Error', e.message); }
+        finally { setSaving(false); }
+      } },
+    ]);
+  };
+
   if (loading) return <LoadingScreen message="Loading teachers..." />;
   if (error) return <ErrorScreen message={error} onRetry={load} />;
 
@@ -47,14 +120,16 @@ export default function TeachersScreen({ navigation }) {
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}><Text style={styles.back}>← Back</Text></TouchableOpacity>
         <Text style={styles.title}>Teachers</Text>
-        <View style={styles.countBadge}><Text style={styles.countText}>{filtered.length}</Text></View>
+        <TouchableOpacity style={styles.addBtn} onPress={() => setShowAdd(true)}>
+          <Text style={styles.addBtnText}>+ Add</Text>
+        </TouchableOpacity>
       </View>
       <TextInput style={styles.search} placeholder="Search name, subject..." placeholderTextColor={colors.textMuted} value={search} onChangeText={setSearch} />
       <FlatList
         data={filtered} keyExtractor={i => i.id} contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.accent} />}
         renderItem={({ item }) => (
-          <View style={styles.card}>
+          <TouchableOpacity style={styles.card} onPress={() => setSelected(item)} activeOpacity={0.8}>
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>{item.full_name?.[0]?.toUpperCase() || '?'}</Text>
             </View>
@@ -63,12 +138,86 @@ export default function TeachersScreen({ navigation }) {
               <Text style={styles.sub}>📖 {item.subject || 'N/A'}</Text>
               <Text style={styles.sub}>🎓 {item.qualification || 'N/A'}</Text>
               <Text style={styles.sub}>✉️ {item.email || 'N/A'}</Text>
+              {(item.class_name || item.section) && <Text style={styles.sub}>Class: {item.class_name || '—'}{item.section ? ` - ${item.section}` : ''}</Text>}
               {item.salary ? <Text style={styles.sub}>💰 Rs. {item.salary}</Text> : null}
             </View>
-          </View>
+          </TouchableOpacity>
         )}
         ListEmptyComponent={<Text style={styles.empty}>No teachers found</Text>}
       />
+
+      <Modal visible={showAdd} animationType="slide" transparent onRequestClose={() => setShowAdd(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Add Teacher</Text>
+              <TouchableOpacity onPress={() => setShowAdd(false)}><Text style={styles.modalClose}>✕</Text></TouchableOpacity>
+            </View>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {[
+                ['Full Name *', 'full_name'],
+                ['Email *', 'email'],
+                ['Subject', 'subject'],
+                ['Qualification', 'qualification'],
+                ['Class', 'class_name'],
+                ['Section', 'section'],
+                ['Salary', 'salary'],
+              ].map(([label, key]) => (
+                <View key={key}>
+                  <Text style={styles.formLabel}>{label}</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={form[key]}
+                    onChangeText={v => setForm(p => ({ ...p, [key]: v }))}
+                    placeholder={label.replace(' *', '')}
+                    placeholderTextColor={colors.textMuted}
+                    autoCapitalize={key === 'email' ? 'none' : 'words'}
+                    keyboardType={key === 'email' ? 'email-address' : key === 'salary' ? 'numeric' : 'default'}
+                  />
+                </View>
+              ))}
+              <TouchableOpacity style={styles.saveBtn} onPress={submitTeacher} disabled={saving}>
+                <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Save Teacher'}</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={!!selected} animationType="slide" transparent onRequestClose={() => setSelected(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{selected?.full_name}</Text>
+              <TouchableOpacity onPress={() => setSelected(null)}><Text style={styles.modalClose}>✕</Text></TouchableOpacity>
+            </View>
+            <ScrollView>
+              {[
+                ['Name', selected?.full_name],
+                ['Email', selected?.email],
+                ['Subject', selected?.subject],
+                ['Qualification', selected?.qualification],
+                ['Class', selected?.class_name],
+                ['Section', selected?.section],
+                ['Salary', selected?.salary ? `Rs. ${selected.salary}` : null],
+              ].filter(([, v]) => v).map(([label, value]) => (
+                <View key={label} style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>{label}</Text>
+                  <Text style={styles.detailValue}>{value}</Text>
+                </View>
+              ))}
+              <View style={styles.actionRow}>
+                <TouchableOpacity style={styles.editBtn} onPress={updateTeacher} disabled={saving}>
+                  <Text style={styles.editBtnText}>{saving ? 'Saving…' : 'Update'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.deleteBtn} onPress={deleteTeacher} disabled={saving}>
+                  <Text style={styles.deleteBtnText}>Delete</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -89,4 +238,23 @@ const styles = StyleSheet.create({
   name: { color: colors.text, fontSize: 15, fontWeight: '600', marginBottom: 4 },
   sub: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
   empty: { color: colors.textMuted, textAlign: 'center', marginTop: 40 },
+  addBtn: { backgroundColor: colors.primary, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20 },
+  addBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  modalOverlay: { flex: 1, backgroundColor: '#000000AA', justifyContent: 'flex-end' },
+  modalCard: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: spacing.lg, maxHeight: '92%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.lg },
+  modalTitle: { color: colors.text, fontSize: 18, fontWeight: 'bold', flex: 1 },
+  modalClose: { color: colors.textMuted, fontSize: 20, paddingLeft: 12 },
+  formLabel: { color: colors.textMuted, fontSize: 13, marginBottom: 6, marginTop: 14 },
+  formInput: { backgroundColor: colors.background, borderRadius: 10, borderWidth: 1, borderColor: colors.border, padding: 12, color: colors.text, fontSize: 14 },
+  saveBtn: { backgroundColor: colors.primary, borderRadius: 12, padding: 14, alignItems: 'center', marginTop: spacing.lg },
+  saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  detailRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
+  detailLabel: { color: colors.textMuted, fontSize: 14 },
+  detailValue: { color: colors.text, fontSize: 14, fontWeight: '600', flex: 1, textAlign: 'right' },
+  actionRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 10, marginTop: spacing.lg },
+  editBtn: { flex: 1, backgroundColor: colors.success, borderRadius: 12, padding: 14, alignItems: 'center' },
+  editBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  deleteBtn: { flex: 1, backgroundColor: colors.error, borderRadius: 12, padding: 14, alignItems: 'center' },
+  deleteBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });

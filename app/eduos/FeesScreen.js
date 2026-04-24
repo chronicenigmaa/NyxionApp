@@ -16,6 +16,9 @@ export default function FeesScreen({ navigation }) {
   const [filter, setFilter] = useState('all');
   const [selected, setSelected] = useState(null);
   const [updating, setUpdating] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ student_name: '', roll_number: '', month: '', year: '', amount: '', due_date: '', remarks: '' });
 
   useEffect(() => { load(); }, []);
 
@@ -55,6 +58,56 @@ export default function FeesScreen({ navigation }) {
     finally { setUpdating(false); }
   };
 
+  const addFee = async () => {
+    if (!form.student_name || !form.amount) return Alert.alert('Required', 'Student name and amount are required');
+    setSaving(true);
+    try {
+      const token = await AsyncStorage.getItem('token');
+      const res = await fetch(`${BASE}/fees/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          student_name: form.student_name,
+          roll_number: form.roll_number,
+          month: form.month,
+          year: form.year,
+          amount: Number(form.amount),
+          due_date: form.due_date,
+          remarks: form.remarks,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to create fee');
+      Alert.alert('✅ Added', 'Fee record created successfully');
+      setShowAdd(false);
+      setForm({ student_name: '', roll_number: '', month: '', year: '', amount: '', due_date: '', remarks: '' });
+      load();
+    } catch (e) { Alert.alert('Error', e.message); }
+    finally { setSaving(false); }
+  };
+
+  const deleteFee = async () => {
+    if (!selected) return;
+    Alert.alert('Confirm Delete', `Delete fee for ${selected.student_name}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        setSaving(true);
+        try {
+          const token = await AsyncStorage.getItem('token');
+          const res = await fetch(`${BASE}/fees/${selected.id}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (!res.ok) throw new Error('Failed to delete fee');
+          Alert.alert('Deleted', 'Fee record removed');
+          setSelected(null);
+          load();
+        } catch (e) { Alert.alert('Error', e.message); }
+        finally { setSaving(false); }
+      } },
+    ]);
+  };
+
   if (loading) return <LoadingScreen message="Loading fees..." />;
   if (error) return <ErrorScreen message={error} onRetry={load} />;
 
@@ -68,6 +121,9 @@ export default function FeesScreen({ navigation }) {
           <Text style={styles.back}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.title}>Fees</Text>
+        <TouchableOpacity style={styles.addBtn} onPress={() => setShowAdd(true)}>
+          <Text style={styles.addBtnText}>+ Add</Text>
+        </TouchableOpacity>
       </View>
 
       {summary && (
@@ -126,6 +182,44 @@ export default function FeesScreen({ navigation }) {
         )}
         ListEmptyComponent={<Text style={styles.empty}>No fee records found</Text>}
       />
+
+      <Modal visible={showAdd} animationType="slide" transparent onRequestClose={() => setShowAdd(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Add Fee</Text>
+              <TouchableOpacity onPress={() => setShowAdd(false)}><Text style={styles.modalClose}>✕</Text></TouchableOpacity>
+            </View>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {[
+                ['Student Name *', 'student_name'],
+                ['Roll Number', 'roll_number'],
+                ['Month', 'month'],
+                ['Year', 'year'],
+                ['Amount *', 'amount'],
+                ['Due Date', 'due_date'],
+                ['Remarks', 'remarks'],
+              ].map(([label, key]) => (
+                <View key={key}>
+                  <Text style={styles.formLabel}>{label}</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={form[key]}
+                    onChangeText={v => setForm(prev => ({ ...prev, [key]: v }))}
+                    placeholder={label.replace(' *', '')}
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType={key === 'amount' ? 'numeric' : key === 'due_date' ? 'default' : 'default'}
+                    autoCapitalize={key === 'student_name' ? 'words' : 'none'}
+                  />
+                </View>
+              ))}
+              <TouchableOpacity style={styles.saveBtn} onPress={addFee} disabled={saving}>
+                <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Create Fee'}</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={!!selected} animationType="slide" transparent onRequestClose={() => setSelected(null)}>
         <View style={styles.modalOverlay}>
@@ -203,4 +297,10 @@ const styles = StyleSheet.create({
   detailValue: { color: colors.text, fontSize: 14, fontWeight: '600' },
   payBtn: { backgroundColor: colors.success, borderRadius: 12, padding: 14, alignItems: 'center', marginTop: spacing.lg, marginBottom: spacing.xl },
   payBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  addBtn: { backgroundColor: colors.primary, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20 },
+  addBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  formLabel: { color: colors.textMuted, fontSize: 13, marginBottom: 6, marginTop: 14 },
+  formInput: { backgroundColor: colors.background, borderRadius: 10, borderWidth: 1, borderColor: colors.border, padding: 12, color: colors.text, fontSize: 14 },
+  saveBtn: { backgroundColor: colors.primary, borderRadius: 12, padding: 14, alignItems: 'center', marginTop: spacing.lg },
+  saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });

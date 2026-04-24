@@ -14,6 +14,9 @@ export default function LoginScreen({ onLogin }) {
   const [email, setEmail] = useState('admin@tcs.edu.pk');
   const [password, setPassword] = useState('admin123');
   const [loading, setLoading] = useState(false);
+  const [forgotMode, setForgotMode] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
 
   const handleLogin = async () => {
     setLoading(true);
@@ -32,6 +35,27 @@ export default function LoginScreen({ onLogin }) {
       Alert.alert('Login Failed', e.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!forgotEmail.trim()) return Alert.alert('Required', 'Enter your email');
+    setForgotLoading(true);
+    try {
+      const res = await fetch(`${BASE}/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmail.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Password reset failed');
+      Alert.alert('Check Email', data.message || 'Password reset instruction sent.');
+      setForgotMode(false);
+      setForgotEmail('');
+    } catch (e) {
+      Alert.alert('Forgot Password Failed', e.message);
+    } finally {
+      setForgotLoading(false);
     }
   };
 
@@ -73,9 +97,36 @@ export default function LoginScreen({ onLogin }) {
               : <Text style={styles.btnText}>Sign In</Text>}
           </TouchableOpacity>
 
+          <TouchableOpacity onPress={() => setForgotMode(true)}>
+            <Text style={styles.link}>Forgot password?</Text>
+          </TouchableOpacity>
           <Text style={styles.hint}>Demo: admin@tcs.edu.pk / admin123</Text>
         </View>
       </ScrollView>
+
+      <Modal visible={forgotMode} animationType="slide" transparent onRequestClose={() => setForgotMode(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Forgot Password</Text>
+            <Text style={styles.modalText}>Enter your email and we’ll send reset instructions.</Text>
+            <TextInput
+              style={styles.input}
+              value={forgotEmail}
+              onChangeText={setForgotEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              placeholder="Email address"
+              placeholderTextColor={colors.textMuted}
+            />
+            <TouchableOpacity style={styles.btn} onPress={handleForgotPassword} disabled={forgotLoading}>
+              {forgotLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Send Reset Link</Text>}
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setForgotMode(false)} style={styles.modalCloseBtn}>
+              <Text style={styles.modalCloseText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -105,5 +156,12 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
   },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  hint: { color: colors.textMuted, fontSize: 12, textAlign: 'center', marginTop: spacing.md },
+  link: { color: colors.primary, fontSize: 13, textAlign: 'center', marginTop: spacing.md, fontWeight: '700' },
+  hint: { color: colors.textMuted, fontSize: 12, textAlign: 'center', marginTop: spacing.sm },
+  modalOverlay: { flex: 1, backgroundColor: '#00000099', justifyContent: 'center', padding: spacing.lg },
+  modalCard: { backgroundColor: colors.surface, borderRadius: 20, padding: spacing.lg, borderWidth: 1, borderColor: colors.border },
+  modalTitle: { color: colors.text, fontSize: fonts.sizes.lg, fontWeight: '800', marginBottom: spacing.sm },
+  modalText: { color: colors.textMuted, fontSize: 14, marginBottom: spacing.md, lineHeight: 20 },
+  modalCloseBtn: { alignItems: 'center', marginTop: spacing.md },
+  modalCloseText: { color: colors.textMuted, fontSize: 14 },
 });
