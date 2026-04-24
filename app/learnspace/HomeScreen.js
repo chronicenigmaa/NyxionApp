@@ -15,7 +15,7 @@ const MenuItem = ({ icon, label, color, onPress }) => (
 );
 
 export default function LearnHomeScreen({ user, onNavigate, onLogout }) {
-  const isTeacher = user?.role === 'teacher';
+  const isTeacher = user?.role?.toLowerCase() === 'teacher';
   const hasAiAccess = isTeacher || user?.package === 'growth' || user?.package === 'enterprise' || user?.ai_enabled;
 
   return (
@@ -57,6 +57,14 @@ export default function LearnHomeScreen({ user, onNavigate, onLogout }) {
           <MenuItem icon="journal-outline" label="Notes" color={colors.warning} onPress={() => onNavigate('Notes')} />
           <MenuItem icon="calendar-outline" label="Events" color="#8B5CF6" onPress={() => onNavigate('Events')} />
           {hasAiAccess && <MenuItem icon="sparkles-outline" label="AI Tools" color={colors.primary} onPress={() => onNavigate('LearnAITools')} />}
+          {isTeacher && (
+            <>
+              <MenuItem icon="pencil-outline" label="Create Assignment" color="#0F766E" onPress={() => onNavigate('Assignments', { teacherMode: true })} />
+              <MenuItem icon="reader-outline" label="Publish Notes" color="#7C3AED" onPress={() => onNavigate('Notes', { teacherMode: true })} />
+              <MenuItem icon="school-outline" label="Create Exam" color="#B91C1C" onPress={() => onNavigate('Exams', { teacherMode: true })} />
+              <MenuItem icon="checkmark-done-outline" label="Mark Attendance" color="#0EA5E9" onPress={() => onNavigate('LearnAttendance', { teacherMode: true })} />
+            </>
+          )}
         </View>
 
         <View style={{ height: spacing.xl }} />

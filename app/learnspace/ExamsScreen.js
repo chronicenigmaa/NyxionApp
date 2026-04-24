@@ -1,18 +1,25 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, Modal, ScrollView } from 'react-native';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, Modal, ScrollView, TextInput, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, fonts } from '../../constants/theme';
 import LoadingScreen from '../../components/LoadingScreen';
 import ErrorScreen from '../../components/ErrorScreen';
+import ScreenWrapper from '../../components/ScreenWrapper';
 
 const BASE = 'https://nyxion-learnspace-production.up.railway.app/api/v1';
 
-export default function ExamsScreen({ navigation }) {
+export default function ExamsScreen({ navigation, route }) {
   const [exams, setExams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [selected, setSelected] = useState(null);
+  const [me, setMe] = useState(null);
+  const [isTeacher, setIsTeacher] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [newExam, setNewExam] = useState({ title: '', subject: '', class_name: '', duration_minutes: '', total_marks: '', scheduled_at: '' });
+  const teacherMode = route?.params?.teacherMode;
+  const canCreate = isTeacher || teacherMode;
 
   useEffect(() => { load(); }, []);
 
@@ -20,6 +27,12 @@ export default function ExamsScreen({ navigation }) {
     setError(null);
     try {
       const token = await AsyncStorage.getItem('learn_token');
+      const meRes = await fetch(`${BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+      const meData = await meRes.json();
+      if (!meRes.ok) throw new Error(meData.detail || 'Failed to load profile');
+      setMe(meData);
+      setIsTeacher(meData.role?.toLowerCase() === 'teacher' || teacherMode);
+
       const res = await fetch(`${BASE}/exams/`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -30,6 +43,36 @@ export default function ExamsScreen({ navigation }) {
     finally { setLoading(false); setRefreshing(false); }
   };
 
+  const createExam = async () => {
+    if (!newExam.title || !newExam.class_name) return Alert.alert('Required', 'Title and class are required');
+    setLoading(true);
+    try {
+      const token = await AsyncStorage.getItem('learn_token');
+      const res = await fetch(`${BASE}/exams/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          title: newExam.title,
+          subject: newExam.subject,
+          class_name: newExam.class_name,
+          duration_minutes: Number(newExam.duration_minutes),
+          total_marks: Number(newExam.total_marks),
+          scheduled_at: newExam.scheduled_at,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to create exam');
+      Alert.alert('✅ Created', 'Exam created successfully');
+      setShowCreate(false);
+      setNewExam({ title: '', subject: '', class_name: '', duration_minutes: '', total_marks: '', scheduled_at: '' });
+      load();
+    } catch (e) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (loading) return <LoadingScreen message="Loading exams..." />;
   if (error) return <ErrorScreen message={error} onRetry={load} />;
 
@@ -37,13 +80,19 @@ export default function ExamsScreen({ navigation }) {
   const statusLabel = s => s === 'live' ? '🟢 LIVE' : s === 'ended' ? '🔴 ENDED' : '🕐 SCHEDULED';
 
   return (
-    <View style={styles.container}>
+    <ScreenWrapper>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Text style={styles.back}>← Back</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>Exams</Text>
-        <View style={styles.countBadge}><Text style={styles.countText}>{exams.length}</Text></View>
+        <Text style={styles.title}>{isTeacher ? 'Teacher Exams' : 'Exams'}</Text>
+        {canCreate ? (
+          <TouchableOpacity style={styles.headerAction} onPress={() => setShowCreate(true)}>
+            <Text style={styles.headerActionText}>+ Create</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.countBadge}><Text style={styles.countText}>{exams.length}</Text></View>
+        )}
       </View>
 
       <FlatList
@@ -81,6 +130,45 @@ export default function ExamsScreen({ navigation }) {
           </View>
         }
       />
+
+      <Modal visible={showCreate} animationType="slide" transparent onRequestClose={() => setShowCreate(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Create Exam</Text>
+              <TouchableOpacity onPress={() => setShowCreate(false)}>
+                <Text style={styles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {[
+                ['Title *', 'title'],
+                ['Subject', 'subject'],
+                ['Class *', 'class_name'],
+                ['Duration (minutes)', 'duration_minutes'],
+                ['Total Marks', 'total_marks'],
+                ['Date & Time', 'scheduled_at'],
+              ].map(([label, key]) => (
+                <View key={key}>
+                  <Text style={styles.formLabel}>{label}</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={newExam[key]}
+                    onChangeText={v => setNewExam(prev => ({ ...prev, [key]: v }))}
+                    placeholder={label.replace(' *', '')}
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType={key === 'duration_minutes' || key === 'total_marks' ? 'numeric' : 'default'}
+                    autoCapitalize="words"
+                  />
+                </View>
+              ))}
+              <TouchableOpacity style={styles.saveBtn} onPress={createExam}>
+                <Text style={styles.saveBtnText}>Create Exam</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={!!selected} animationType="slide" transparent onRequestClose={() => setSelected(null)}>
         <View style={styles.modalOverlay}>
@@ -127,6 +215,8 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
   back: { color: colors.accent, fontSize: 16, marginRight: spacing.md },
   title: { flex: 1, color: colors.text, fontSize: fonts.sizes.lg, fontWeight: 'bold' },
+  headerAction: { paddingVertical: 8, paddingHorizontal: 14, backgroundColor: colors.accent, borderRadius: 20 },
+  headerActionText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   countBadge: { backgroundColor: colors.error + '33', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 12 },
   countText: { color: colors.error, fontSize: 13, fontWeight: '600' },
   list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl },
@@ -143,6 +233,10 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center', marginTop: 60 },
   emptyEmoji: { fontSize: 48, marginBottom: 12 },
   emptyText: { color: colors.textMuted, fontSize: 15, textAlign: 'center', lineHeight: 24 },
+  formLabel: { color: colors.textMuted, fontSize: 13, marginBottom: 6, marginTop: spacing.md },
+  formInput: { backgroundColor: colors.background, borderRadius: 10, borderWidth: 1, borderColor: colors.border, padding: 12, color: colors.text, fontSize: 14 },
+  saveBtn: { backgroundColor: colors.accent, borderRadius: 12, padding: 14, alignItems: 'center', marginTop: spacing.lg },
+  saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   modalOverlay: { flex: 1, backgroundColor: '#000000AA', justifyContent: 'flex-end' },
   modalCard: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: spacing.lg, maxHeight: '85%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.lg },

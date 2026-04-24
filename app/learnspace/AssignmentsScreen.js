@@ -23,7 +23,7 @@ async function ensureClassSet() {
   return user;
 }
 
-export default function AssignmentsScreen({ navigation }) {
+export default function AssignmentsScreen({ navigation, route }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -33,19 +33,30 @@ export default function AssignmentsScreen({ navigation }) {
   const [submitting, setSubmitting] = useState(false);
   const [userClass, setUserClass] = useState(null);
   const [noClass, setNoClass] = useState(false);
+  const [me, setMe] = useState(null);
+  const [isTeacher, setIsTeacher] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [newAssignment, setNewAssignment] = useState({ title: '', subject: '', class_name: '', due_date: '', max_marks: '', description: '' });
+  const teacherMode = route?.params?.teacherMode;
+  const canCreate = isTeacher || teacherMode;
 
   useEffect(() => { load(); }, []);
 
   const load = async () => {
     setError(null);
+    setNoClass(false);
     try {
       const token = await getToken();
-      // First check user profile
       const meRes = await fetch(`${BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
-      const me = await meRes.json();
-      setUserClass(me.class_name);
+      const meData = await meRes.json();
+      if (!meRes.ok) throw new Error(meData.detail || 'Failed to load profile');
+      setMe(meData);
+      const isTeacherUser = meData.role?.toLowerCase() === 'teacher' || teacherMode;
+      setIsTeacher(isTeacherUser);
+      const assignedSection = meData.assigned_sections?.length ? meData.assigned_sections.join(', ') : null;
+      setUserClass(meData.class_name || assignedSection);
 
-      if (!me.class_name) {
+      if (!meData.class_name && !assignedSection && !isTeacherUser) {
         setNoClass(true);
         setLoading(false);
         setRefreshing(false);
@@ -77,6 +88,33 @@ export default function AssignmentsScreen({ navigation }) {
       Alert.alert('✅ Submitted!', 'Your assignment has been submitted.');
       setSelected(null);
       setSubmitText('');
+      load();
+    } catch (e) { Alert.alert('Error', e.message); }
+    finally { setSubmitting(false); }
+  };
+
+  const createAssignment = async () => {
+    if (!newAssignment.title || !newAssignment.class_name) return Alert.alert('Required', 'Title and class are required');
+    setSubmitting(true);
+    try {
+      const token = await getToken();
+      const res = await fetch(`${BASE}/assignments/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          title: newAssignment.title,
+          subject: newAssignment.subject,
+          class_name: newAssignment.class_name,
+          due_date: newAssignment.due_date,
+          max_marks: Number(newAssignment.max_marks),
+          description: newAssignment.description,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to create assignment');
+      Alert.alert('✅ Created', 'Assignment created successfully');
+      setShowCreate(false);
+      setNewAssignment({ title: '', subject: '', class_name: '', due_date: '', max_marks: '', description: '' });
       load();
     } catch (e) { Alert.alert('Error', e.message); }
     finally { setSubmitting(false); }
@@ -120,10 +158,16 @@ export default function AssignmentsScreen({ navigation }) {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Text style={styles.back}>← Back</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Assignments</Text>
-        <View style={[styles.countBadge]}>
-          <Text style={styles.countText}>{items.length}</Text>
-        </View>
+        <Text style={styles.headerTitle}>{isTeacher ? 'Teacher Assignments' : 'Assignments'}</Text>
+        {canCreate ? (
+          <TouchableOpacity style={styles.headerAction} onPress={() => setShowCreate(true)}>
+            <Text style={styles.headerActionText}>+ Create</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={[styles.countBadge]}>
+            <Text style={styles.countText}>{items.length}</Text>
+          </View>
+        )}
       </View>
 
       {userClass && (
@@ -162,6 +206,53 @@ export default function AssignmentsScreen({ navigation }) {
           </View>
         }
       />
+
+      <Modal visible={showCreate} animationType="slide" transparent onRequestClose={() => setShowCreate(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Create Assignment</Text>
+              <TouchableOpacity onPress={() => setShowCreate(false)}>
+                <Text style={styles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {[
+                ['Title *', 'title'],
+                ['Subject', 'subject'],
+                ['Class *', 'class_name'],
+                ['Due Date', 'due_date'],
+                ['Max Marks', 'max_marks'],
+              ].map(([label, key]) => (
+                <View key={key}>
+                  <Text style={styles.formLabel}>{label}</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={newAssignment[key]}
+                    onChangeText={v => setNewAssignment(prev => ({ ...prev, [key]: v }))}
+                    placeholder={label.replace(' *', '')}
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType={key === 'max_marks' ? 'numeric' : 'default'}
+                    autoCapitalize={key === 'class_name' ? 'words' : 'sentences'}
+                  />
+                </View>
+              ))}
+              <Text style={styles.formLabel}>Description</Text>
+              <TextInput
+                style={[styles.formInput, { minHeight: 120, textAlignVertical: 'top' }]}
+                value={newAssignment.description}
+                onChangeText={v => setNewAssignment(prev => ({ ...prev, description: v }))}
+                placeholder="Assignment instructions"
+                placeholderTextColor={colors.textMuted}
+                multiline
+              />
+              <TouchableOpacity style={styles.saveBtn} onPress={createAssignment} disabled={submitting}>
+                <Text style={styles.saveBtnText}>{submitting ? 'Saving...' : 'Create Assignment'}</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={!!selected} animationType="slide" transparent onRequestClose={() => setSelected(null)}>
         <View style={styles.modalOverlay}>
@@ -225,6 +316,8 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
   back: { color: colors.primary, fontSize: 16, fontWeight: '600', width: 60 },
   headerTitle: { flex: 1, color: colors.text, fontSize: fonts.sizes.lg, fontWeight: 'bold', textAlign: 'center' },
+  headerAction: { paddingVertical: 8, paddingHorizontal: 14, backgroundColor: colors.primary, borderRadius: 20 },
+  headerActionText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   countBadge: { backgroundColor: colors.primary + '33', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 12, minWidth: 60, alignItems: 'flex-end' },
   countText: { color: colors.primary, fontSize: 13, fontWeight: '600' },
   classBanner: { backgroundColor: colors.primary + '11', paddingHorizontal: spacing.lg, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border },
@@ -248,6 +341,8 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center', marginTop: 60 },
   emptyEmoji: { fontSize: 48, marginBottom: 12 },
   emptyText: { color: colors.textMuted, fontSize: 15, textAlign: 'center', lineHeight: 24 },
+  formLabel: { color: colors.textMuted, fontSize: 13, marginBottom: 6, marginTop: spacing.md },
+  formInput: { backgroundColor: colors.background, borderRadius: 10, borderWidth: 1, borderColor: colors.border, padding: 12, color: colors.text, fontSize: 14 },
   modalOverlay: { flex: 1, backgroundColor: '#000000AA', justifyContent: 'flex-end' },
   modalCard: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: spacing.lg, maxHeight: '92%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },

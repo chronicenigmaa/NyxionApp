@@ -12,6 +12,12 @@ import ScreenWrapper from '../../components/ScreenWrapper';
 
 const BASE = 'https://nyxion-eduos-production-63b9.up.railway.app/api/v1';
 
+const PACKAGE_FEATURES = {
+  starter: ['Basic school dashboard', 'Fee tracking', 'Attendance summary'],
+  growth: ['All starter features', 'Gradebook access', 'Exam scheduling', 'Teacher assignment'],
+  enterprise: ['All growth features', 'AI tools', 'Advanced reporting', 'Custom school branding'],
+};
+
 export default function SchoolsScreen({ navigation }) {
   const [schools, setSchools] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -21,11 +27,23 @@ export default function SchoolsScreen({ navigation }) {
   const [showAdd, setShowAdd] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
-    name: '', code: '', address: '', phone: '', email: '', package: 'starter',
+    name: '', code: '', address: '', phone: '', email: '', package: 'starter', admin_email: '', admin_password: '',
   });
   const [editing, setEditing] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [createAdmin, setCreateAdmin] = useState(false);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); loadUserRole(); }, []);
+
+  const loadUserRole = async () => {
+    try {
+      const raw = await AsyncStorage.getItem('eduos_user');
+      const user = raw ? JSON.parse(raw) : null;
+      setIsSuperAdmin(user?.role === 'super_admin');
+    } catch (e) {
+      setIsSuperAdmin(false);
+    }
+  };
 
   const load = async () => {
     setError(null);
@@ -44,16 +62,30 @@ export default function SchoolsScreen({ navigation }) {
     setSaving(true);
     try {
       const token = await AsyncStorage.getItem('token');
+      const payload = {
+        name: form.name,
+        code: form.code,
+        address: form.address,
+        phone: form.phone,
+        email: form.email,
+        package: form.package,
+      };
+      if (isSuperAdmin && createAdmin && form.admin_email && form.admin_password) {
+        payload.admin_email = form.admin_email;
+        payload.admin_password = form.admin_password;
+        payload.admin_role = 'admin';
+      }
       const res = await fetch(`${BASE}/schools`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Failed to add school');
       Alert.alert('✅ Added', `${form.name} added successfully`);
       setShowAdd(false);
-      setForm({ name: '', code: '', address: '', phone: '', email: '', package: 'starter' });
+      setCreateAdmin(false);
+      setForm({ name: '', code: '', address: '', phone: '', email: '', package: 'starter', admin_email: '', admin_password: '' });
       load();
     } catch (e) { Alert.alert('Error', e.message); }
     finally { setSaving(false); }
@@ -64,18 +96,26 @@ export default function SchoolsScreen({ navigation }) {
     setSaving(true);
     try {
       const token = await AsyncStorage.getItem('token');
-      const res = await fetch(`${BASE}/schools/${selected.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          name: selected.name,
-          code: selected.code,
-          address: selected.address,
-          phone: selected.phone,
-          email: selected.email,
-          package: selected.package,
-        }),
-      });
+      const payload = {
+        name: selected.name,
+        code: selected.code,
+        address: selected.address,
+        phone: selected.phone,
+        email: selected.email,
+        package: selected.package,
+      };
+      const request = async (method) => {
+        const res = await fetch(`${BASE}/schools/${selected.id}`, {
+          method,
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(payload),
+        });
+        return res;
+      };
+      let res = await request('PATCH');
+      if (res.status === 405) {
+        res = await request('PUT');
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Failed to update school');
       Alert.alert('✅ Updated', `${selected.name} updated successfully`);
@@ -197,6 +237,12 @@ export default function SchoolsScreen({ navigation }) {
                       </TouchableOpacity>
                     ))}
                   </View>
+                  <View style={styles.packageDetails}>
+                    <Text style={styles.packageDetailsTitle}>Included Features</Text>
+                    {PACKAGE_FEATURES[selected?.package || 'starter'].map((feature) => (
+                      <Text key={feature} style={styles.packageFeature}>• {feature}</Text>
+                    ))}
+                  </View>
                   <TouchableOpacity style={styles.saveBtn} onPress={updateSchool} disabled={saving}>
                     {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>✅ Save Changes</Text>}
                   </TouchableOpacity>
@@ -276,6 +322,43 @@ export default function SchoolsScreen({ navigation }) {
                   </TouchableOpacity>
                 ))}
               </View>
+              <View style={styles.packageDetails}>
+                <Text style={styles.packageDetailsTitle}>Included Features</Text>
+                {PACKAGE_FEATURES[form.package].map((feature) => (
+                  <Text key={feature} style={styles.packageFeature}>• {feature}</Text>
+                ))}
+              </View>
+              {isSuperAdmin && (
+                <>
+                  <TouchableOpacity style={styles.toggleAdminBtn} onPress={() => setCreateAdmin(prev => !prev)}>
+                    <Text style={styles.toggleAdminText}>{createAdmin ? 'Hide' : 'Add'} school admin account</Text>
+                  </TouchableOpacity>
+                  {createAdmin && (
+                    <>
+                      <Text style={styles.formLabel}>Admin Email</Text>
+                      <TextInput
+                        style={styles.formInput}
+                        value={form.admin_email}
+                        onChangeText={v => setForm(prev => ({ ...prev, admin_email: v }))}
+                        placeholder="Admin email"
+                        placeholderTextColor={colors.textMuted}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                      />
+                      <Text style={styles.formLabel}>Admin Password</Text>
+                      <TextInput
+                        style={styles.formInput}
+                        value={form.admin_password}
+                        onChangeText={v => setForm(prev => ({ ...prev, admin_password: v }))}
+                        placeholder="Admin password"
+                        placeholderTextColor={colors.textMuted}
+                        secureTextEntry
+                        autoCapitalize="none"
+                      />
+                    </>
+                  )}
+                </>
+              )}
               <TouchableOpacity style={styles.saveBtn} onPress={addSchool} disabled={saving}>
                 {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>✅ Add School</Text>}
               </TouchableOpacity>
@@ -319,6 +402,11 @@ const styles = StyleSheet.create({
   packageOptionActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   packageOptionText: { color: colors.textMuted, fontWeight: '600', fontSize: 13 },
   packageOptionTextActive: { color: '#fff' },
+  packageDetails: { backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: spacing.md, marginTop: spacing.md },
+  packageDetailsTitle: { color: colors.text, fontSize: 13, fontWeight: '700', marginBottom: 8 },
+  packageFeature: { color: colors.textMuted, fontSize: 13, lineHeight: 20 },
+  toggleAdminBtn: { marginTop: spacing.md, paddingVertical: 10, alignItems: 'center' },
+  toggleAdminText: { color: colors.primary, fontWeight: '700', fontSize: 14 },
   saveBtn: { backgroundColor: colors.primary, borderRadius: 12, padding: 14, alignItems: 'center', marginTop: spacing.lg },
   saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   modalActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.lg },

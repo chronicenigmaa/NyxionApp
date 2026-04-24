@@ -208,7 +208,7 @@ export default function FeesScreen({ navigation }) {
                     onChangeText={v => setForm(prev => ({ ...prev, [key]: v }))}
                     placeholder={label.replace(' *', '')}
                     placeholderTextColor={colors.textMuted}
-                    keyboardType={key === 'amount' ? 'numeric' : key === 'due_date' ? 'default' : 'default'}
+                    keyboardType={key === 'amount' ? 'numeric' : 'default'}
                     autoCapitalize={key === 'student_name' ? 'words' : 'none'}
                   />
                 </View>

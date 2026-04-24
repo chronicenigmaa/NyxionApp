@@ -4,14 +4,17 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, fonts } from '../../constants/theme';
 import LoadingScreen from '../../components/LoadingScreen';
 import ErrorScreen from '../../components/ErrorScreen';
+import ScreenWrapper from '../../components/ScreenWrapper';
 
 const BASE = 'https://nyxion-learnspace-production.up.railway.app/api/v1';
 
-export default function LearnAttendanceScreen({ navigation }) {
+export default function LearnAttendanceScreen({ navigation, route }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [isTeacher, setIsTeacher] = useState(false);
+  const teacherMode = route?.params?.teacherMode;
 
   useEffect(() => { load(); }, []);
 
@@ -19,6 +22,24 @@ export default function LearnAttendanceScreen({ navigation }) {
     setError(null);
     try {
       const token = await AsyncStorage.getItem('learn_token');
+      const meRes = await fetch(`${BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+      const meData = await meRes.json();
+      const isTeacherUser = meData?.role?.toLowerCase() === 'teacher';
+      setIsTeacher(isTeacherUser);
+
+      if (teacherMode && isTeacherUser) {
+        const teacherRes = await fetch(`${BASE}/attendance/`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (teacherRes.ok) {
+          const teacherJson = await teacherRes.json();
+          setData(teacherJson);
+          return;
+        }
+        setData({ teacherPlaceholder: true });
+        return;
+      }
+
       const res = await fetch(`${BASE}/attendance/my`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -32,11 +53,32 @@ export default function LearnAttendanceScreen({ navigation }) {
   if (loading) return <LoadingScreen message="Loading attendance..." />;
   if (error) return <ErrorScreen message={error} onRetry={load} />;
 
+  if (isTeacher && teacherMode && data?.teacherPlaceholder) {
+    return (
+      <ScreenWrapper>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Text style={styles.back}>← Back</Text>
+          </TouchableOpacity>
+          <Text style={styles.title}>Attendance Management</Text>
+        </View>
+        <View style={styles.placeholderContainer}>
+          <Text style={styles.noClassEmoji}>✏️</Text>
+          <Text style={styles.noClassTitle}>Teacher Attendance</Text>
+          <Text style={styles.noClassText}>
+            Attendance marking is available from the teacher portal.
+            {'\n\n'}If your school has a dedicated attendance endpoint, contact your admin to enable it.
+          </Text>
+        </View>
+      </ScreenWrapper>
+    );
+  }
+
   const records = data?.records || [];
   const pct = data?.percentage ?? 0;
 
   return (
-    <View style={styles.container}>
+    <ScreenWrapper>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Text style={styles.back}>← Back</Text>
@@ -89,7 +131,7 @@ export default function LearnAttendanceScreen({ navigation }) {
           </View>
         }
       />
-    </View>
+    </ScreenWrapper>
   );
 }
 
@@ -112,4 +154,8 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center', marginTop: 60 },
   emptyEmoji: { fontSize: 48, marginBottom: 12 },
   emptyText: { color: colors.textMuted, fontSize: 15, textAlign: 'center', lineHeight: 24 },
+  placeholderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: spacing.lg },
+  noClassEmoji: { fontSize: 48, marginBottom: 16 },
+  noClassTitle: { color: colors.text, fontSize: fonts.sizes.lg, fontWeight: '700', marginBottom: 10, textAlign: 'center' },
+  noClassText: { color: colors.textMuted, fontSize: 14, lineHeight: 22, textAlign: 'center' },
 });

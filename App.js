@@ -63,7 +63,7 @@ function LearnStack({ route }) {
             {...props}
             user={user}
             onLogout={onLogout}
-            onNavigate={(screen) => props.navigation.navigate(screen)}
+            onNavigate={(screen, params) => props.navigation.navigate(screen, params)}
           />
         )}
       </Stack.Screen>

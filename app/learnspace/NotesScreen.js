@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
-  RefreshControl, Modal, ScrollView, Alert, Linking,
+  RefreshControl, Modal, ScrollView, TextInput, Alert, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,13 +22,20 @@ function fileIcon(name) {
   return 'attach-outline';
 }
 
-export default function NotesScreen({ navigation }) {
+export default function NotesScreen({ navigation, route }) {
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [selected, setSelected] = useState(null);
   const [downloading, setDownloading] = useState(null);
+  const [me, setMe] = useState(null);
+  const [isTeacher, setIsTeacher] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [savingNote, setSavingNote] = useState(false);
+  const [newNote, setNewNote] = useState({ title: '', subject: '', class_name: '', description: '' });
+  const teacherMode = route?.params?.teacherMode;
+  const canCreate = isTeacher || teacherMode;
 
   useEffect(() => { load(); }, []);
 
@@ -36,6 +43,12 @@ export default function NotesScreen({ navigation }) {
     setError(null);
     try {
       const token = await AsyncStorage.getItem('learn_token');
+      const meRes = await fetch(`${BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+      const meData = await meRes.json();
+      if (!meRes.ok) throw new Error(meData.detail || 'Failed to load profile');
+      setMe(meData);
+      setIsTeacher(meData.role?.toLowerCase() === 'teacher' || teacherMode);
+
       const res = await fetch(`${BASE}/notes/`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -103,12 +116,40 @@ export default function NotesScreen({ navigation }) {
     }
   };
 
+  const createNote = async () => {
+    if (!newNote.title || !newNote.class_name) return Alert.alert('Required', 'Title and class are required');
+    setSavingNote(true);
+    try {
+      const token = await AsyncStorage.getItem('learn_token');
+      const res = await fetch(`${BASE}/notes/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          title: newNote.title,
+          subject: newNote.subject,
+          class_name: newNote.class_name,
+          description: newNote.description,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to publish note');
+      Alert.alert('✅ Published', 'Note posted successfully');
+      setShowCreate(false);
+      setNewNote({ title: '', subject: '', class_name: '', description: '' });
+      load();
+    } catch (e) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setSavingNote(false);
+    }
+  };
+
   if (loading) return <LoadingScreen message="Loading notes..." />;
   if (error) return <ErrorScreen message={error} onRetry={load} />;
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScreenHeader title="Notes" onBack={() => navigation.goBack()} />
+      <ScreenHeader title="Notes" onBack={() => navigation.goBack()} rightLabel={canCreate ? '+ Publish' : null} onRight={() => canCreate && setShowCreate(true)} rightColor={colors.primary} />
 
       <FlatList
         data={notes}
@@ -214,6 +255,50 @@ export default function NotesScreen({ navigation }) {
           </View>
         </View>
       </Modal>
+
+      <Modal visible={showCreate} animationType="slide" transparent onRequestClose={() => setShowCreate(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Publish Note</Text>
+              <TouchableOpacity onPress={() => setShowCreate(false)} style={styles.closeBtn}>
+                <Ionicons name="close" size={20} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {[
+                ['Title *', 'title'],
+                ['Subject', 'subject'],
+                ['Class *', 'class_name'],
+              ].map(([label, key]) => (
+                <View key={key}>
+                  <Text style={styles.formLabel}>{label}</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={newNote[key]}
+                    onChangeText={v => setNewNote(prev => ({ ...prev, [key]: v }))}
+                    placeholder={label.replace(' *', '')}
+                    placeholderTextColor={colors.textMuted}
+                    autoCapitalize={key === 'class_name' ? 'words' : 'sentences'}
+                  />
+                </View>
+              ))}
+              <Text style={styles.formLabel}>Description</Text>
+              <TextInput
+                style={[styles.formInput, { minHeight: 120, textAlignVertical: 'top' }]}
+                value={newNote.description}
+                onChangeText={v => setNewNote(prev => ({ ...prev, description: v }))}
+                placeholder="Enter note details"
+                placeholderTextColor={colors.textMuted}
+                multiline
+              />
+              <TouchableOpacity style={styles.saveBtn} onPress={createNote} disabled={savingNote}>
+                <Text style={styles.saveBtnText}>{savingNote ? 'Publishing...' : 'Publish Note'}</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -256,6 +341,10 @@ const styles = StyleSheet.create({
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
   modalTitle: { color: colors.text, fontSize: 18, fontWeight: '700', flex: 1, marginRight: 12 },
   closeBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+  formLabel: { color: colors.textMuted, fontSize: 13, marginBottom: 6, marginTop: spacing.md },
+  formInput: { backgroundColor: colors.background, borderRadius: 10, borderWidth: 1, borderColor: colors.border, padding: 12, color: colors.text, fontSize: 14 },
+  saveBtn: { backgroundColor: colors.primary, borderRadius: 12, padding: 14, alignItems: 'center', marginTop: spacing.lg },
+  saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   metaRow: { flexDirection: 'row', gap: 8, marginBottom: spacing.sm, flexWrap: 'wrap' },
   subjectTag: { backgroundColor: colors.primary + '15', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20 },
   subjectTagText: { color: colors.primary, fontSize: 12, fontWeight: '600' },

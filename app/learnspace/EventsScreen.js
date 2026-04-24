@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, FlatList, StyleSheet, SafeAreaView,
+  View, Text, FlatList, StyleSheet,
   TouchableOpacity, RefreshControl, Modal, ScrollView,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, fonts } from '../../constants/theme';
 import LoadingScreen from '../../components/LoadingScreen';
 import ErrorScreen from '../../components/ErrorScreen';
+import ScreenWrapper from '../../components/ScreenWrapper';
 
 const BASE = 'https://nyxion-learnspace-production.up.railway.app/api/v1';
 
@@ -37,7 +38,7 @@ export default function EventsScreen({ navigation }) {
   if (error) return <ErrorScreen message={error} onRetry={load} />;
 
   return (
-    <View style={styles.container}>
+    <ScreenWrapper style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Text style={styles.back}>← Back</Text>
@@ -113,7 +114,7 @@ export default function EventsScreen({ navigation }) {
           </View>
         </View>
       </Modal>
-    </View>
+    </ScreenWrapper>
   );
 }
 
