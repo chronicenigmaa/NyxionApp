@@ -39,7 +39,7 @@ export default function ResultsScreen({ navigation }) {
       </View>
       <FlatList
         data={results}
-        keyExtractor={i => i.id}
+        keyExtractor={i => String(i.id)}
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />}
         renderItem={({ item }) => (

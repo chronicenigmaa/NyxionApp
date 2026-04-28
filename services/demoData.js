@@ -31,6 +31,29 @@ export async function getTeacherAssignments() {
   }
 }
 
+export async function hydrateStudentsWithAssignments(students = [], teachers = []) {
+  const assignments = await getTeacherAssignments();
+  const hydratedByKey = new Map();
+
+  Object.entries(assignments).forEach(([teacherId, assignedStudents]) => {
+    const teacher = teachers.find((item) => String(item.id) === String(teacherId));
+    assignedStudents.forEach((student) => {
+      const normalized = normalizeStudent(student, teacher);
+      hydratedByKey.set(toStudentKey(normalized), normalized);
+    });
+  });
+
+  return students.map((student) => {
+    const match = hydratedByKey.get(toStudentKey(student));
+    if (!match) return student;
+    return {
+      ...student,
+      teacher_id: match.teacher_id,
+      teacher_name: match.teacher_name,
+    };
+  });
+}
+
 export async function saveTeacherAssignments(assignments) {
   await AsyncStorage.setItem(TEACHER_ASSIGNMENTS_KEY, JSON.stringify(assignments));
 }
@@ -96,7 +119,7 @@ export async function removeStudentFromTeacher(student, teacherId) {
   await saveTeacherAssignments(assignments);
 }
 
-export async function getAssignedStudentsForTeacher(teacher) {
+export async function getRealAssignedStudentsForTeacher(teacher) {
   const teacherName = teacher?.full_name?.trim().toLowerCase() || teacher?.name?.trim().toLowerCase();
   if (!teacher?.id && !teacherName) return [];
   const assignments = await getTeacherAssignments();
@@ -104,27 +127,19 @@ export async function getAssignedStudentsForTeacher(teacher) {
   if (Array.isArray(list) && list.length) {
     return list.map((student) => normalizeStudent(student, teacher));
   }
-
   const matched = Object.values(assignments)
     .flat()
     .filter((student) => student?.teacher_name?.trim?.().toLowerCase?.() === teacherName);
-  if (matched.length) {
-    return matched.map((student) => normalizeStudent(student, teacher));
-  }
+  return matched.map((student) => normalizeStudent(student, teacher));
+}
 
-  if (teacherName === 'nadia hussain') {
-    return DEMO_NADIA_STUDENTS.map((student, index) =>
-      normalizeStudent(
-        {
-          ...student,
-          id: `nadia-demo-${index + 1}`,
-        },
-        teacher
-      )
-    );
-  }
+export async function getAssignedStudentsForTeacher(teacher) {
+  const real = await getRealAssignedStudentsForTeacher(teacher);
+  if (real.length) return real;
 
-  return [];
+  return DEMO_NADIA_STUDENTS.map((student, index) =>
+    normalizeStudent({ ...student, id: `demo-student-${index + 1}` }, teacher)
+  );
 }
 
 export function buildDemoGradesForStudents(students = []) {

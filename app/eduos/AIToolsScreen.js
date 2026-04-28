@@ -9,10 +9,9 @@ import { colors, spacing, fonts } from '../../constants/theme';
 const BASE = 'https://nyxion-eduos-production-63b9.up.railway.app/api/v1';
 
 const TOOLS = [
-  { id: 'generate', label: 'Exam Generator', endpoints: ['/ai/generate-exam', '/ai/generate'], fields: ['subject', 'topic', 'num_questions'] },
-  { id: 'homework', label: 'Homework Generator', endpoints: ['/ai/homework-generator'], fields: ['subject', 'topic', 'class_name'] },
-  { id: 'chatbot', label: 'AI Chatbot', endpoints: ['/ai/chatbot'], fields: ['message'] },
-  { id: 'analyse', label: 'Exam Analysis', endpoints: ['/ai/exam-analysis'], fields: ['exam_id'] },
+  { id: 'generate', label: 'Exam Generator', endpoint: '/ai/generate', fields: ['subject', 'topic', 'num_questions'] },
+  { id: 'homework', label: 'Homework Generator', endpoint: '/ai/homework-generator', fields: ['subject', 'topic', 'class_name', 'num_questions'] },
+  { id: 'chatbot', label: 'AI Chatbot', endpoint: '/ai/chatbot', fields: ['message'] },
 ];
 
 export default function AIToolsScreen({ navigation }) {
@@ -27,27 +26,36 @@ export default function AIToolsScreen({ navigation }) {
     setResult(null);
     try {
       const token = await AsyncStorage.getItem('token');
-      let lastError = 'AI request failed';
-      let success = null;
-
-      for (const endpoint of activeTool.endpoints) {
-        const res = await fetch(`${BASE}${endpoint}`, {
+      let res;
+      if (activeTool.id === 'generate') {
+        res = await fetch(`${BASE}${activeTool.endpoint}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({
-            ...inputs,
-            num_questions: inputs.num_questions ? Number(inputs.num_questions) : undefined,
+            type: 'exam',
+            prompt: `Generate ${inputs.num_questions || 5} exam questions for subject "${inputs.subject || 'General'}" on topic "${inputs.topic || 'General'}". Format clearly with marks and question numbers.`,
           }),
         });
-        const data = await res.json().catch(() => ({}));
-        if (res.ok) {
-          success = data;
-          break;
-        }
-        lastError = data.detail || data.message || `HTTP ${res.status}`;
+      } else if (activeTool.id === 'homework') {
+        const query = new URLSearchParams({
+          subject: inputs.subject || '',
+          topic: inputs.topic || '',
+          class_name: inputs.class_name || '',
+          num_questions: String(Number(inputs.num_questions || 5)),
+        });
+        res = await fetch(`${BASE}${activeTool.endpoint}?${query.toString()}`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } else {
+        res = await fetch(`${BASE}${activeTool.endpoint}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ message: inputs.message }),
+        });
       }
-
-      if (!success) throw new Error(lastError);
+      const success = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(success.detail || success.message || `HTTP ${res.status}`);
 
       const normalizedResult =
         typeof success === 'string'

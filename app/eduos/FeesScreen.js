@@ -73,9 +73,8 @@ export default function FeesScreen({ navigation }) {
   const statusOptions = [
     { label: 'Pending', value: 'pending' },
     { label: 'Paid', value: 'paid' },
-    { label: 'Not Paid', value: 'not_paid' },
     { label: 'Overdue', value: 'overdue' },
-    { label: 'Defaulter', value: 'defaulter' },
+    { label: 'Partial', value: 'partial' },
   ];
 
   const load = async () => {
@@ -178,7 +177,7 @@ export default function FeesScreen({ navigation }) {
     if (!feeForm?.amount || !feeForm?.student_name) return Alert.alert('Required', 'Student and amount are required');
     setUpdating(true);
     try {
-      await eduos.patch(`/fees/${selected.id}`, {
+      await eduos.put(`/fees/${selected.id}`, {
         student_id: feeForm.student_id || undefined,
         student_name: feeForm.student_name,
         roll_number: feeForm.roll_number,
@@ -285,10 +284,10 @@ export default function FeesScreen({ navigation }) {
       )}
 
       <View style={styles.filterRow}>
-        {['all', 'paid', 'pending', 'overdue', 'not_paid', 'defaulter'].map((item) => (
+        {['all', 'paid', 'pending', 'overdue', 'partial'].map((item) => (
           <TouchableOpacity key={item} style={[styles.filterBtn, filter === item && styles.filterBtnActive]} onPress={() => setFilter(item)}>
             <Text style={[styles.filterText, filter === item && styles.filterTextActive]}>
-              {item === 'not_paid' ? 'Not Paid' : item === 'defaulter' ? 'Defaulter' : item.charAt(0).toUpperCase() + item.slice(1)}
+              {item.charAt(0).toUpperCase() + item.slice(1)}
             </Text>
           </TouchableOpacity>
         ))}
@@ -330,13 +329,12 @@ export default function FeesScreen({ navigation }) {
                 options={studentOptions}
                 placeholder="Select student"
               />
-              <SelectField
-                label="Roll Number"
-                value={form.student_id}
-                onChange={(value) => syncStudentFields(value, setForm)}
-                options={studentOptions.map((option) => ({ label: option.label.split(' • ')[1] || option.label, value: option.value }))}
-                placeholder="Select roll number"
-              />
+              <Text style={styles.formLabel}>Roll Number</Text>
+              <View style={[styles.formInput, { justifyContent: 'center', minHeight: 48 }]}>
+                <Text style={form.roll_number ? styles.triggerText : styles.placeholderText}>
+                  {form.roll_number || 'Auto-filled from student selection'}
+                </Text>
+              </View>
               <SelectField label="Month" value={form.month} onChange={(value) => setForm((prev) => ({ ...prev, month: value }))} options={MONTH_OPTIONS} placeholder="Select month" />
               <SelectField label="Year" value={form.year} onChange={(value) => setForm((prev) => ({ ...prev, year: value }))} options={YEAR_OPTIONS} placeholder="Select year" />
               <Text style={styles.formLabel}>Amount *</Text>

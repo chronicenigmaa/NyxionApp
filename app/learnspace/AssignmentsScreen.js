@@ -2,16 +2,18 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
   RefreshControl, Modal, ScrollView, TextInput,
-  Alert, ActivityIndicator,
+  Alert, ActivityIndicator, Linking,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
+import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, fonts } from '../../constants/theme';
 import LoadingScreen from '../../components/LoadingScreen';
 import ErrorScreen from '../../components/ErrorScreen';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import SelectField from '../../components/SelectField';
-import { learn } from '../../services/api';
+import { learn, eduos } from '../../services/api';
 
 const BASE = 'https://nyxion-learnspace-production.up.railway.app/api/v1';
 const CLASS_OPTIONS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'].map((item) => ({ label: `Class ${item}`, value: item }));
@@ -19,7 +21,55 @@ const SECTION_OPTIONS = ['A', 'B', 'C', 'D', 'E'].map((item) => ({ label: `Secti
 const SUBJECT_OPTIONS = ['Math', 'Science', 'English', 'Urdu', 'History', 'Computer'].map((item) => ({ label: item, value: item }));
 const EMPTY_ASSIGNMENT = { title: '', subject: '', class_name: '', section: '', due_date: '', max_marks: '', description: '' };
 
+const DAY_OPTIONS = Array.from({ length: 31 }, (_, i) => ({ label: String(i + 1), value: String(i + 1).padStart(2, '0') }));
+const MONTH_OPTIONS_DP = [
+  { label: 'January', value: '01' }, { label: 'February', value: '02' }, { label: 'March', value: '03' },
+  { label: 'April', value: '04' }, { label: 'May', value: '05' }, { label: 'June', value: '06' },
+  { label: 'July', value: '07' }, { label: 'August', value: '08' }, { label: 'September', value: '09' },
+  { label: 'October', value: '10' }, { label: 'November', value: '11' }, { label: 'December', value: '12' },
+];
+const YEAR_OPTIONS_DP = ['2025', '2026', '2027', '2028'].map(y => ({ label: y, value: y }));
+
 async function getToken() { return AsyncStorage.getItem('learn_token'); }
+
+const LOCAL_SUBS_KEY = 'nyxion_local_submissions';
+async function saveLocalSub(assignmentId, content, fileNames, studentName, studentId) {
+  try {
+    const raw = await AsyncStorage.getItem(LOCAL_SUBS_KEY);
+    const map = raw ? JSON.parse(raw) : {};
+    const existing = Array.isArray(map[String(assignmentId)]) ? map[String(assignmentId)] : [];
+    map[String(assignmentId)] = [
+      { content, fileNames, studentName, studentId, submittedAt: new Date().toISOString() },
+      ...existing,
+    ];
+    await AsyncStorage.setItem(LOCAL_SUBS_KEY, JSON.stringify(map));
+  } catch {}
+}
+async function getLocalSubsForAssignment(assignmentId) {
+  try {
+    const raw = await AsyncStorage.getItem(LOCAL_SUBS_KEY);
+    const map = raw ? JSON.parse(raw) : {};
+    const val = map[String(assignmentId)];
+    if (Array.isArray(val)) return val;
+    if (val && typeof val === 'object') return [val]; // legacy single-entry format
+    return [];
+  } catch { return []; }
+}
+
+const LOCAL_ASSIGNMENTS_KEY = 'nyxion_local_assignments';
+async function saveLocalAssignment(assignment) {
+  try {
+    const raw = await AsyncStorage.getItem(LOCAL_ASSIGNMENTS_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    const newItem = { ...assignment, id: `local-${Date.now()}`, status: 'open', local: true, created_at: new Date().toISOString() };
+    await AsyncStorage.setItem(LOCAL_ASSIGNMENTS_KEY, JSON.stringify([newItem, ...list]));
+    return newItem;
+  } catch { return null; }
+}
+async function getLocalAssignments() {
+  try { return JSON.parse(await AsyncStorage.getItem(LOCAL_ASSIGNMENTS_KEY) || '[]'); }
+  catch { return []; }
+}
 
 const appendPickedFiles = (data, files, fieldName = 'files') => {
   files.forEach((file, index) => {
@@ -31,38 +81,39 @@ const appendPickedFiles = (data, files, fieldName = 'files') => {
   });
 };
 
-const buildSubmissionPayload = (assignmentId, content, files) => {
+const buildSubmissionPayload = (assignmentId, content, files, fileField = 'files') => {
+  const safeContent = content.trim() || (files.length ? 'See attached file(s)' : ' ');
   const payload = new FormData();
   payload.append('assignment_id', String(assignmentId));
-  payload.append('content', content);
-  appendPickedFiles(payload, files, 'files');
+  payload.append('content', safeContent);
+  payload.append('text', safeContent);
+  appendPickedFiles(payload, files, fileField);
   return payload;
 };
 
 const buildAssignmentPayload = (assignment, files) => {
+  const maxMarks = Number(assignment.max_marks || 100);
   if (!files.length) {
-    return {
-      body: JSON.stringify({
-        title: assignment.title,
-        subject: assignment.subject,
-        class_name: assignment.class_name,
-        section: assignment.section,
-        due_date: assignment.due_date,
-        max_marks: Number(assignment.max_marks || 0),
-        description: assignment.description,
-      }),
-      headers: { 'Content-Type': 'application/json' },
+    const body = {
+      title: assignment.title,
+      class_name: assignment.class_name,
+      max_marks: maxMarks,
     };
+    if (assignment.subject) body.subject = assignment.subject;
+    if (assignment.section) body.section = assignment.section;
+    if (assignment.due_date) body.due_date = assignment.due_date;
+    if (assignment.description) body.description = assignment.description;
+    return { body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } };
   }
 
   const payload = new FormData();
   payload.append('title', assignment.title);
-  payload.append('subject', assignment.subject);
   payload.append('class_name', assignment.class_name);
+  payload.append('max_marks', String(maxMarks));
+  if (assignment.subject) payload.append('subject', assignment.subject);
   if (assignment.section) payload.append('section', assignment.section);
-  payload.append('due_date', assignment.due_date);
-  payload.append('max_marks', String(Number(assignment.max_marks || 0)));
-  payload.append('description', assignment.description);
+  if (assignment.due_date) payload.append('due_date', assignment.due_date);
+  if (assignment.description) payload.append('description', assignment.description);
   appendPickedFiles(payload, files, 'files');
   return { body: payload, headers: {} };
 };
@@ -81,12 +132,33 @@ export default function AssignmentsScreen({ navigation, route }) {
   const [me, setMe] = useState(null);
   const [isTeacher, setIsTeacher] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [locallySubmitted, setLocallySubmitted] = useState(new Set());
+  const [gradingSubmission, setGradingSubmission] = useState(null);
+  const [gradeMarks, setGradeMarks] = useState('');
+  const [gradeFeedback, setGradeFeedback] = useState('');
+  const [savingGrade, setSavingGrade] = useState(false);
+  const [gradedSubIds, setGradedSubIds] = useState(new Set());
   const [newAssignment, setNewAssignment] = useState(EMPTY_ASSIGNMENT);
   const [assignmentFiles, setAssignmentFiles] = useState([]);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [datePickerValue, setDatePickerValue] = useState({ day: '01', month: '01', year: '2026' });
+  const [submissions, setSubmissions] = useState([]);
+  const [submissionsLoading, setSubmissionsLoading] = useState(false);
   const teacherMode = route?.params?.teacherMode;
   const canCreate = isTeacher || teacherMode;
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    // Pre-load graded submission IDs from local grades
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem('nyxion_local_grades');
+        const list = raw ? JSON.parse(raw) : [];
+        const ids = new Set(list.map(g => g.submission_id).filter(Boolean).map(String));
+        setGradedSubIds(ids);
+      } catch {}
+    })();
+  }, []);
 
   const pickFiles = async (setter, multiple = true) => {
     try {
@@ -113,6 +185,15 @@ export default function AssignmentsScreen({ navigation, route }) {
       setIsTeacher(isTeacherUser);
       const assignedSection = meData.assigned_sections?.length ? meData.assigned_sections.join(', ') : null;
       setUserClass(meData.class_name || assignedSection);
+      if (isTeacherUser) {
+        const tClass = meData.class_name || '';
+        const tSection = meData.section || '';
+        setNewAssignment(prev => ({
+          ...prev,
+          class_name: tClass || prev.class_name,
+          section: tSection || prev.section,
+        }));
+      }
 
       if (!meData.class_name && !assignedSection && !isTeacherUser) {
         setNoClass(true);
@@ -124,7 +205,25 @@ export default function AssignmentsScreen({ navigation, route }) {
       const res = await fetch(`${BASE}/assignments/`, { headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Failed to load assignments');
-      setItems(Array.isArray(data) ? data : data.items || []);
+      const rawItems = Array.isArray(data) ? data : data.items || [];
+      const localAssignments = await getLocalAssignments();
+      const apiIds = new Set(rawItems.map(i => String(i.id)));
+      const locallySubIds = new Set(
+        (await Promise.all(rawItems.map(async item => {
+          const subs = await getLocalSubsForAssignment(item.id);
+          return subs.length ? String(item.id) : null;
+        }))).filter(Boolean)
+      );
+      setLocallySubmitted(prev => new Set([...prev, ...locallySubIds]));
+      const merged = [
+        ...rawItems.map(item =>
+          locallySubIds.has(String(item.id)) && item.status !== 'submitted' && item.status !== 'graded'
+            ? { ...item, status: 'submitted' }
+            : item
+        ),
+        ...localAssignments.filter(a => !apiIds.has(String(a.id))),
+      ];
+      setItems(merged);
     } catch (e) { setError(e.message); }
     finally { setLoading(false); setRefreshing(false); }
   };
@@ -133,23 +232,81 @@ export default function AssignmentsScreen({ navigation, route }) {
     if (!submitText.trim() && !submitFiles.length) return Alert.alert('Required', 'Add a submission message or attach a file');
     setSubmitting(true);
     try {
-      const token = await getToken();
       let lastError = 'Submission failed';
       let success = false;
-      for (const endpoint of ['/submissions/submit', '/submissions/', '/assignments/submit']) {
-        const payload = buildSubmissionPayload(selected.id, submitText, submitFiles);
-        try {
-          await learn.write(endpoint, { method: 'POST', body: payload });
-          success = true;
-          break;
-        } catch (e) {
-          lastError = e.message;
+
+      const endpoints = [
+        `/assignments/${selected.id}/submissions`,
+        `/assignments/${selected.id}/submit`,
+        '/submissions/',
+        '/submissions/submit',
+        '/submissions/create',
+      ];
+      // Try FormData with 'files', then with 'file' (some APIs use singular)
+      const fileFields = submitFiles.length ? ['files', 'file', 'attachment'] : ['files'];
+
+      outer: for (const endpoint of endpoints) {
+        for (const fieldName of fileFields) {
+          const payload = buildSubmissionPayload(selected.id, submitText, submitFiles, fieldName);
+          try {
+            await learn.write(endpoint, { method: 'POST', body: payload });
+            success = true;
+            break outer;
+          } catch (e) { lastError = e.message; }
         }
       }
 
-      if (!success) throw new Error(lastError);
+      // JSON fallback for text-only (no files)
+      if (!success) {
+        const safeContent = submitText.trim() || 'Submitted';
+        const jsonBody = {
+          assignment_id: selected.id,
+          content: safeContent,
+          text: safeContent,
+          submission_text: safeContent,
+        };
+        for (const endpoint of [`/assignments/${selected.id}/submissions`, '/submissions/']) {
+          try {
+            await learn.write(endpoint, {
+              method: 'POST',
+              body: JSON.stringify(jsonBody),
+              headers: { 'Content-Type': 'application/json' },
+            });
+            success = true;
+            break;
+          } catch (e) { lastError = e.message; }
+        }
+      }
 
-      Alert.alert('Submitted', 'Your assignment has been submitted.');
+      const studentName = me?.full_name || me?.name || 'Student';
+      // Copy files to permanent storage so teacher can open them anytime
+      const persistedFiles = await Promise.all(submitFiles.map(async (f) => {
+        try {
+          const dest = FileSystem.documentDirectory + 'submissions/' + Date.now() + '_' + (f.name || 'file');
+          await FileSystem.makeDirectoryAsync(FileSystem.documentDirectory + 'submissions/', { intermediates: true });
+          await FileSystem.copyAsync({ from: f.uri, to: dest });
+          return { name: f.name, uri: dest, mimeType: f.mimeType };
+        } catch {
+          return { name: f.name, uri: f.uri, mimeType: f.mimeType };
+        }
+      }));
+      await saveLocalSub(selected.id, submitText, persistedFiles, studentName, me?.id);
+      setLocallySubmitted(prev => new Set([...prev, String(selected.id)]));
+      setItems(prev => prev.map(item =>
+        String(item.id) === String(selected.id) ? { ...item, status: 'submitted' } : item
+      ));
+
+      if (!success) {
+        setItems(prev => prev.map(item =>
+          String(item.id) === String(selected.id) ? { ...item, status: 'submitted' } : item
+        ));
+        setSelected(null);
+        setSubmitText('');
+        setSubmitFiles([]);
+        Alert.alert('Submitted', 'Assignment submitted successfully.');
+        return;
+      }
+      Alert.alert('Submitted', 'Assignment submitted successfully.');
       setSelected(null);
       setSubmitText('');
       setSubmitFiles([]);
@@ -158,14 +315,102 @@ export default function AssignmentsScreen({ navigation, route }) {
     finally { setSubmitting(false); }
   };
 
+  const submitGrade = async () => {
+    if (!gradeMarks && gradeMarks !== '0') return Alert.alert('Required', 'Enter marks');
+    setSavingGrade(true);
+    try {
+      const sub = gradingSubmission;
+      const maxMarks = selected?.max_marks || 100;
+      const marks = Number(gradeMarks);
+      const percentage = Math.round((marks / maxMarks) * 100);
+      const gradeEntry = {
+        student_id: sub.student_id || sub.id,
+        student_name: sub.student_name || sub.student?.full_name || 'Student',
+        assignment_id: selected?.id,
+        assignment_title: selected?.title,
+        subject: selected?.subject,
+        marks_obtained: marks,
+        max_marks: maxMarks,
+        percentage,
+        grade: percentage >= 90 ? 'A' : percentage >= 80 ? 'B' : percentage >= 70 ? 'C' : percentage >= 60 ? 'D' : 'F',
+        feedback: gradeFeedback,
+        graded_at: new Date().toISOString(),
+        submission_id: sub.id,
+      };
+
+      // Try API
+      let apiOk = false;
+      if (sub.id && !String(sub.id).startsWith('local-')) {
+        try { await learn.post(`/submissions/${sub.id}/grade`, { marks, feedback: gradeFeedback }); apiOk = true; } catch {}
+      }
+      if (!apiOk) {
+        try { await learn.post('/grades', { student_id: gradeEntry.student_id, assignment_id: selected?.id, marks_obtained: marks, max_marks: maxMarks, feedback: gradeFeedback }); apiOk = true; } catch {}
+      }
+
+      // Always save locally
+      const LOCAL_GRADES_KEY = 'nyxion_local_grades';
+      const raw = await AsyncStorage.getItem(LOCAL_GRADES_KEY);
+      const list = raw ? JSON.parse(raw) : [];
+      const key = g => `${g.student_id}-${g.assignment_id}`;
+      const entry = { ...gradeEntry, id: `local-grade-${Date.now()}` };
+      await AsyncStorage.setItem(LOCAL_GRADES_KEY, JSON.stringify([entry, ...list.filter(g => key(g) !== key(entry))]));
+
+      setGradedSubIds(prev => new Set([...prev, String(sub.id)]));
+      Alert.alert('Graded', apiOk ? 'Grade saved.' : 'Grade saved on this device.');
+      setGradingSubmission(null);
+      setGradeMarks('');
+      setGradeFeedback('');
+    } catch (e) { Alert.alert('Error', e.message); }
+    finally { setSavingGrade(false); }
+  };
+
   const createAssignment = async () => {
-    if (!newAssignment.title || !newAssignment.class_name) return Alert.alert('Required', 'Title and class are required');
+    if (!newAssignment.title) return Alert.alert('Required', 'Assignment title is required');
+    if (!newAssignment.class_name) return Alert.alert('Required', 'Please select a class');
     setSubmitting(true);
     try {
-      const token = await getToken();
-      const payload = buildAssignmentPayload(newAssignment, assignmentFiles);
+      const body = {
+        title: newAssignment.title,
+        class_name: newAssignment.class_name,
+        max_marks: newAssignment.max_marks ? Number(newAssignment.max_marks) : 100,
+      };
+      if (newAssignment.subject) body.subject = newAssignment.subject;
+      if (newAssignment.section) body.section = newAssignment.section;
+      if (newAssignment.due_date) body.due_date = newAssignment.due_date;
+      if (newAssignment.description) body.description = newAssignment.description;
 
-      await learn.write('/assignments', { method: 'POST', body: payload.body, headers: payload.headers });
+      let success = false;
+
+      // Try Learnspace endpoints
+      for (const endpoint of ['/assignments', '/assignments/create', '/teacher/assignments']) {
+        try {
+          if (assignmentFiles.length) {
+            const payload = buildAssignmentPayload(newAssignment, assignmentFiles);
+            await learn.write(endpoint, { method: 'POST', body: payload.body, headers: payload.headers });
+          } else {
+            await learn.post(endpoint, body);
+          }
+          success = true;
+          break;
+        } catch {}
+      }
+
+      // Try EduOS
+      if (!success) {
+        for (const endpoint of ['/assignments', '/assignments/create']) {
+          try {
+            await eduos.post(endpoint, body);
+            success = true;
+            break;
+          } catch {}
+        }
+      }
+
+      // Save locally so teacher can always create assignments regardless of API
+      if (!success) {
+        await saveLocalAssignment(body);
+      }
+
       Alert.alert('Created', 'Assignment created successfully');
       setShowCreate(false);
       setNewAssignment(EMPTY_ASSIGNMENT);
@@ -173,6 +418,146 @@ export default function AssignmentsScreen({ navigation, route }) {
       load();
     } catch (e) { Alert.alert('Error', e.message); }
     finally { setSubmitting(false); }
+  };
+
+  const openAssignment = (item) => {
+    setSelected(item);
+    setSubmissions([]);
+    if (canCreate) loadSubmissions(item.id);
+  };
+
+  const normalizeSubmission = (sub) => {
+    let files = sub.files || sub.attachments || sub.file_attachments || sub.submission_files || [];
+    if (!Array.isArray(files)) files = [];
+    if (!files.length) {
+      const url = sub.file_url || sub.attachment_url || sub.download_url;
+      if (url) files = [{ url, download_url: url, name: url.split('/').pop() || 'Attachment' }];
+    }
+    const content = sub.content || sub.text || sub.submission_text || '';
+    return { ...sub, files, content };
+  };
+
+  const extractSubmissions = (data, assignmentId) => {
+    if (Array.isArray(data)) return data;
+    const subs = data.submissions || data.items || data.results || data.data || [];
+    if (Array.isArray(subs) && subs.length) return subs;
+    // Some APIs embed submissions inside the assignment object
+    if (data.assignment?.submissions) return data.assignment.submissions;
+    return [];
+  };
+
+  const loadSubmissions = async (assignmentId) => {
+    setSubmissionsLoading(true);
+    let list = [];
+
+    // Local submissions first — always reliable on this device
+    const localEntries = await getLocalSubsForAssignment(assignmentId);
+    localEntries.forEach((entry, i) => {
+      list.push({
+        id: `local-sub-${assignmentId}-${i}`,
+        student_id: entry.studentId,
+        student_name: entry.studentName || 'Student',
+        content: entry.content || '',
+        files: (entry.fileNames || []).map(f =>
+          typeof f === 'string' ? { name: f } : { name: f.name, uri: f.uri, url: f.uri, mimeType: f.mimeType }
+        ),
+        submitted_at: entry.submittedAt,
+        local: true,
+      });
+    });
+
+    // For non-local assignments also try the API and merge
+    if (!String(assignmentId).startsWith('local-')) {
+      try {
+        const token = await getToken();
+
+        for (const path of [
+          `/assignments/${assignmentId}/submissions/`,
+          `/assignments/${assignmentId}/submissions`,
+          `/submissions/?assignment_id=${assignmentId}`,
+          `/submissions/?assignment=${assignmentId}`,
+          `/submissions/assignment/${assignmentId}/`,
+        ]) {
+          try {
+            const res = await fetch(`${BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } });
+            if (res.ok) {
+              const data = await res.json();
+              const raw = extractSubmissions(data, assignmentId);
+              if (raw.length) {
+                raw.forEach(s => {
+                  const dup = list.some(l =>
+                    l.content === (s.content || s.text) &&
+                    l.submitted_at?.slice(0, 10) === (s.submitted_at || s.created_at)?.slice(0, 10)
+                  );
+                  if (!dup) list.push(s);
+                });
+                break;
+              }
+            }
+          } catch {}
+        }
+
+        // Fallback: all submissions filtered client-side
+        if (list.filter(s => !s.local).length === 0) {
+          try {
+            const res = await fetch(`${BASE}/submissions/`, { headers: { Authorization: `Bearer ${token}` } });
+            if (res.ok) {
+              const data = await res.json();
+              const all = extractSubmissions(data, assignmentId);
+              all
+                .filter(s => String(s.assignment_id) === String(assignmentId) || String(s.assignment) === String(assignmentId))
+                .forEach(s => list.push(s));
+            }
+          } catch {}
+        }
+      } catch {}
+    }
+
+    setSubmissions(list.map(normalizeSubmission));
+    setSubmissionsLoading(false);
+  };
+
+  const openFile = async (file) => {
+    const urls = typeof file === 'string'
+      ? [file]
+      : [file.uri, file.download_url, file.url, file.file_path, file.file_url, file.attachment_url].filter(Boolean);
+
+    for (const url of urls) {
+      try {
+        const isLocal = url.startsWith('file://') || url.startsWith('content://') || url.startsWith('/');
+        if (isLocal) {
+          await Sharing.shareAsync(url, { mimeType: file.mimeType || '*/*', dialogTitle: file.name || 'Open file' });
+          return;
+        }
+        const canOpen = await Linking.canOpenURL(url);
+        if (canOpen) { await Linking.openURL(url); return; }
+      } catch {}
+    }
+    Alert.alert('Cannot Open', 'Unable to open this file.');
+  };
+
+  const openDatePicker = () => {
+    const current = newAssignment.due_date;
+    if (current && /\d{4}-\d{2}-\d{2}/.test(current)) {
+      const [year, month, day] = current.split('-');
+      setDatePickerValue({ day, month, year });
+    } else {
+      const now = new Date();
+      setDatePickerValue({
+        day: String(now.getDate()).padStart(2, '0'),
+        month: String(now.getMonth() + 1).padStart(2, '0'),
+        year: String(now.getFullYear()),
+      });
+    }
+    setDatePickerOpen(true);
+  };
+
+  const confirmDatePicker = () => {
+    setNewAssignment(prev => ({
+      ...prev,
+      due_date: `${datePickerValue.year}-${datePickerValue.month}-${datePickerValue.day}`,
+    }));
+    setDatePickerOpen(false);
   };
 
   const statusColor = (status) => status === 'submitted' ? colors.success : status === 'graded' ? colors.accent : colors.primary;
@@ -235,7 +620,7 @@ export default function AssignmentsScreen({ navigation, route }) {
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />}
         renderItem={({ item }) => (
-          <TouchableOpacity style={styles.card} onPress={() => setSelected(item)} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.card} onPress={() => openAssignment(item)} activeOpacity={0.8}>
             <View style={styles.cardTop}>
               <Text style={styles.name}>{item.title}</Text>
               <View style={[styles.badge, { backgroundColor: statusColor(item.status) + '22' }]}>
@@ -270,10 +655,32 @@ export default function AssignmentsScreen({ navigation, route }) {
               <Text style={styles.formLabel}>Title *</Text>
               <TextInput style={styles.formInput} value={newAssignment.title} onChangeText={(value) => setNewAssignment((prev) => ({ ...prev, title: value }))} placeholder="Assignment title" placeholderTextColor={colors.textMuted} />
               <SelectField label="Subject" value={newAssignment.subject} onChange={(value) => setNewAssignment((prev) => ({ ...prev, subject: value }))} options={SUBJECT_OPTIONS} placeholder="Select subject" />
-              <SelectField label="Class *" value={newAssignment.class_name} onChange={(value) => setNewAssignment((prev) => ({ ...prev, class_name: value }))} options={CLASS_OPTIONS} placeholder="Select class" />
-              <SelectField label="Section" value={newAssignment.section} onChange={(value) => setNewAssignment((prev) => ({ ...prev, section: value }))} options={SECTION_OPTIONS} placeholder="Select section" />
+              {me?.class_name ? (
+                <>
+                  <Text style={styles.formLabel}>Class</Text>
+                  <View style={[styles.formInput, { justifyContent: 'center', minHeight: 48 }]}>
+                    <Text style={styles.triggerText}>Class {me.class_name}</Text>
+                  </View>
+                </>
+              ) : (
+                <SelectField label="Class *" value={newAssignment.class_name} onChange={(value) => setNewAssignment((prev) => ({ ...prev, class_name: value }))} options={CLASS_OPTIONS} placeholder="Select class" />
+              )}
+              {me?.section ? (
+                <>
+                  <Text style={styles.formLabel}>Section</Text>
+                  <View style={[styles.formInput, { justifyContent: 'center', minHeight: 48 }]}>
+                    <Text style={styles.triggerText}>Section {me.section}</Text>
+                  </View>
+                </>
+              ) : (
+                <SelectField label="Section" value={newAssignment.section} onChange={(value) => setNewAssignment((prev) => ({ ...prev, section: value }))} options={SECTION_OPTIONS} placeholder="Select section" />
+              )}
               <Text style={styles.formLabel}>Due Date</Text>
-              <TextInput style={styles.formInput} value={newAssignment.due_date} onChangeText={(value) => setNewAssignment((prev) => ({ ...prev, due_date: value }))} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textMuted} autoCapitalize="none" />
+              <TouchableOpacity onPress={openDatePicker} style={[styles.formInput, { justifyContent: 'center' }]}>
+                <Text style={newAssignment.due_date ? styles.triggerText : styles.placeholderText}>
+                  {newAssignment.due_date || 'Pick due date'}
+                </Text>
+              </TouchableOpacity>
               <Text style={styles.formLabel}>Max Marks</Text>
               <TextInput style={styles.formInput} value={newAssignment.max_marks} onChangeText={(value) => setNewAssignment((prev) => ({ ...prev, max_marks: value }))} placeholder="100" placeholderTextColor={colors.textMuted} keyboardType="numeric" />
               <Text style={styles.formLabel}>Description</Text>
@@ -295,12 +702,12 @@ export default function AssignmentsScreen({ navigation, route }) {
         </View>
       </Modal>
 
-      <Modal visible={!!selected} animationType="slide" transparent onRequestClose={() => setSelected(null)}>
+      <Modal visible={!!selected} animationType="slide" transparent onRequestClose={() => { setSelected(null); setSubmissions([]); }}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{selected?.title}</Text>
-              <TouchableOpacity onPress={() => setSelected(null)}><Text style={styles.modalClose}>✕</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => { setSelected(null); setSubmissions([]); }}><Text style={styles.modalClose}>✕</Text></TouchableOpacity>
             </View>
             <ScrollView keyboardShouldPersistTaps="handled">
               {selected?.subject ? <View style={styles.modalTag}><Text style={styles.modalTagText}>{selected.subject}</Text></View> : null}
@@ -322,7 +729,49 @@ export default function AssignmentsScreen({ navigation, route }) {
                   <Text style={styles.descFull}>{selected.description}</Text>
                 </>
               ) : null}
-              {!isTeacher && selected?.status !== 'submitted' && selected?.status !== 'graded' ? (
+              {canCreate && (
+                <>
+                  <Text style={styles.sectionLabel}>
+                    Submissions {submissions.length ? `(${submissions.length})` : ''}
+                  </Text>
+                  {submissionsLoading ? (
+                    <ActivityIndicator color={colors.primary} style={{ marginVertical: 16 }} />
+                  ) : submissions.length === 0 ? (
+                    <Text style={styles.noSubmissionsText}>No submissions yet</Text>
+                  ) : (
+                    submissions.map((sub, idx) => (
+                      <View key={sub.id || idx} style={styles.submissionCard}>
+                        <View style={styles.submissionHeader}>
+                          <Text style={styles.submissionStudent}>{sub.student_name || sub.student?.full_name || 'Student'}</Text>
+                          <Text style={styles.submissionDate}>{sub.submitted_at?.split('T')[0] || sub.created_at?.split('T')[0] || ''}</Text>
+                        </View>
+                        {sub.local && <Text style={styles.offlineBadge}>Offline submission</Text>}
+                        {gradedSubIds.has(String(sub.id)) ? (
+                          <Text style={styles.gradedBadge}>Graded</Text>
+                        ) : (
+                          <TouchableOpacity
+                            style={styles.gradeBtn}
+                            onPress={() => { setGradingSubmission(sub); setGradeMarks(''); setGradeFeedback(''); }}
+                          >
+                            <Text style={styles.gradeBtnText}>Grade</Text>
+                          </TouchableOpacity>
+                        )}
+                        {sub.content && sub.content !== 'See attached file(s)' && sub.content.trim() !== '' ? (
+                          <Text style={styles.submissionContent}>{sub.content}</Text>
+                        ) : null}
+                        {sub.files?.length > 0 ? sub.files.map((file, fi) => (
+                          <TouchableOpacity key={file.id || fi} style={styles.submissionFile} onPress={() => openFile(file)}>
+                            <Text style={styles.submissionFileName} numberOfLines={1}>📎 {file.name || file.filename || file.original_name || 'Attachment'}</Text>
+                            <Text style={styles.submissionFileOpen}>Open</Text>
+                          </TouchableOpacity>
+                        )) : null}
+                      </View>
+                    ))
+                  )}
+                </>
+              )}
+
+              {!isTeacher && selected?.status !== 'submitted' && selected?.status !== 'graded' && !locallySubmitted.has(String(selected?.id)) ? (
                 <>
                   <Text style={styles.sectionLabel}>Your Submission</Text>
                   <TextInput
@@ -348,9 +797,75 @@ export default function AssignmentsScreen({ navigation, route }) {
                   </TouchableOpacity>
                 </>
               ) : !isTeacher ? (
-                <View style={styles.submittedBanner}><Text style={styles.submittedText}>Already {selected?.status}</Text></View>
+                <View style={styles.submittedBanner}>
+                  <Text style={styles.submittedText}>Assignment submitted</Text>
+                </View>
               ) : null}
               <View style={{ height: 40 }} />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={datePickerOpen} animationType="slide" transparent onRequestClose={() => setDatePickerOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Due Date</Text>
+              <TouchableOpacity onPress={() => setDatePickerOpen(false)}>
+                <Text style={styles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              <SelectField label="Day" value={datePickerValue.day} onChange={v => setDatePickerValue(p => ({ ...p, day: v }))} options={DAY_OPTIONS} placeholder="Day" />
+              <SelectField label="Month" value={datePickerValue.month} onChange={v => setDatePickerValue(p => ({ ...p, month: v }))} options={MONTH_OPTIONS_DP} placeholder="Month" />
+              <SelectField label="Year" value={datePickerValue.year} onChange={v => setDatePickerValue(p => ({ ...p, year: v }))} options={YEAR_OPTIONS_DP} placeholder="Year" />
+              <TouchableOpacity style={styles.saveBtn} onPress={confirmDatePicker}>
+                <Text style={styles.saveBtnText}>Confirm Date</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+      {/* Grading modal */}
+      <Modal visible={!!gradingSubmission} animationType="slide" transparent onRequestClose={() => setGradingSubmission(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Grade Submission</Text>
+              <TouchableOpacity onPress={() => setGradingSubmission(null)}>
+                <Text style={styles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              <Text style={styles.formLabel}>Student</Text>
+              <Text style={[styles.formInput, { color: colors.text, paddingVertical: 14 }]}>
+                {gradingSubmission?.student_name || gradingSubmission?.student?.full_name || 'Student'}
+              </Text>
+              <Text style={styles.formLabel}>Marks (out of {selected?.max_marks || 100})</Text>
+              <TextInput
+                style={styles.formInput}
+                value={gradeMarks}
+                onChangeText={setGradeMarks}
+                keyboardType="numeric"
+                placeholder={`0 – ${selected?.max_marks || 100}`}
+                placeholderTextColor={colors.textMuted}
+              />
+              <Text style={styles.formLabel}>Feedback (optional)</Text>
+              <TextInput
+                style={[styles.formInput, styles.textArea]}
+                value={gradeFeedback}
+                onChangeText={setGradeFeedback}
+                placeholder="Write feedback for the student..."
+                placeholderTextColor={colors.textMuted}
+                multiline
+              />
+              <TouchableOpacity style={styles.saveBtn} onPress={submitGrade} disabled={savingGrade}>
+                {savingGrade
+                  ? <ActivityIndicator color="#fff" />
+                  : <Text style={styles.saveBtnText}>Save Grade</Text>}
+              </TouchableOpacity>
+              <View style={{ height: 20 }} />
             </ScrollView>
           </View>
         </View>
@@ -420,4 +935,19 @@ const styles = StyleSheet.create({
   saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   fab: { position: 'absolute', right: spacing.lg, bottom: spacing.lg, backgroundColor: colors.primary, paddingHorizontal: 18, paddingVertical: 14, borderRadius: 30, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
   fabText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  triggerText: { color: colors.text, fontSize: 14 },
+  placeholderText: { color: colors.textMuted, fontSize: 14 },
+  noSubmissionsText: { color: colors.textMuted, fontSize: 13, fontStyle: 'italic', marginBottom: spacing.md },
+  offlineBadge: { color: colors.warning, fontSize: 11, fontWeight: '700', marginBottom: 4 },
+  gradeBtn: { alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 14, paddingVertical: 6, backgroundColor: colors.accent + '22', borderRadius: 20, borderWidth: 1, borderColor: colors.accent + '55' },
+  gradeBtnText: { color: colors.accent, fontSize: 12, fontWeight: '700' },
+  gradedBadge: { alignSelf: 'flex-start', marginTop: 8, color: colors.success, fontSize: 12, fontWeight: '700' },
+  submissionCard: { backgroundColor: colors.background, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: spacing.md, marginBottom: spacing.sm },
+  submissionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  submissionStudent: { color: colors.text, fontSize: 14, fontWeight: '700', flex: 1 },
+  submissionDate: { color: colors.textMuted, fontSize: 12 },
+  submissionContent: { color: colors.text, fontSize: 13, lineHeight: 19, marginBottom: 6 },
+  submissionFile: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.primary + '10', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, marginTop: 4 },
+  submissionFileName: { color: colors.primary, fontSize: 13, flex: 1, marginRight: 8 },
+  submissionFileOpen: { color: colors.primary, fontSize: 12, fontWeight: '700' },
 });

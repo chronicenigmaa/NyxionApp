@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, TextInput, RefreshControl, Modal, ScrollView, Alert } from 'react-native';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, TextInput, RefreshControl, Modal, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, fonts } from '../../constants/theme';
 import LoadingScreen from '../../components/LoadingScreen';
@@ -120,7 +120,7 @@ export default function TeachersScreen({ navigation }) {
       </View>
       <TextInput style={styles.search} placeholder="Search name, subject..." placeholderTextColor={colors.textMuted} value={search} onChangeText={setSearch} />
       <FlatList
-        data={filtered} keyExtractor={i => i.id} contentContainerStyle={styles.list}
+        data={filtered} keyExtractor={i => String(i.id)} contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.accent} />}
         renderItem={({ item }) => (
           <TouchableOpacity style={styles.card} onPress={() => setSelected(item)} activeOpacity={0.8}>
@@ -267,7 +267,7 @@ export default function TeachersScreen({ navigation }) {
               ))}
               <View style={styles.actionRow}>
                 <TouchableOpacity style={styles.editBtn} onPress={updateTeacher} disabled={saving}>
-                  <Text style={styles.editBtnText}>{saving ? 'Saving...' : 'Update Teacher'}</Text>
+                  {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.editBtnText}>Update Teacher</Text>}
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.deleteBtn} onPress={deleteTeacher} disabled={saving}>
                   <Text style={styles.deleteBtnText}>{saving ? 'Working…' : 'Delete Teacher'}</Text>

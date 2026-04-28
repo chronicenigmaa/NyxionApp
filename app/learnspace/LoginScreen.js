@@ -17,7 +17,9 @@ export default function LearnLoginScreen({ onLogin }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [forgotMode, setForgotMode] = useState(false);
-  const [forgotEmail, setForgotEmail] = useState('');
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetConfirm, setResetConfirm] = useState('');
   const [forgotLoading, setForgotLoading] = useState(false);
 
   const handleLogin = async () => {
@@ -39,22 +41,46 @@ export default function LearnLoginScreen({ onLogin }) {
     } finally { setLoading(false); }
   };
 
-  const handleForgotPassword = async () => {
-    if (!forgotEmail.trim()) return Alert.alert('Required', 'Enter your email');
+  const handleResetPassword = async () => {
+    if (!resetEmail.trim()) return Alert.alert('Required', 'Enter your email address');
+    if (!resetPassword) return Alert.alert('Required', 'Enter your new password');
+    if (resetPassword.length < 6) return Alert.alert('Too Short', 'Password must be at least 6 characters');
+    if (resetPassword !== resetConfirm) return Alert.alert('Mismatch', 'Passwords do not match');
     setForgotLoading(true);
     try {
-      const res = await fetch(`${BASE}/auth/forgot-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: forgotEmail.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Password reset failed');
-      Alert.alert('Check Email', data.message || 'Password reset instruction sent.');
-      setForgotMode(false);
-      setForgotEmail('');
+      const body = {
+        email: resetEmail.trim(),
+        new_password: resetPassword,
+        password: resetPassword,
+        confirm_password: resetConfirm,
+      };
+      let success = false;
+      let lastError = 'Password reset failed. Please contact your school admin.';
+      for (const endpoint of ['/auth/reset-password', '/auth/change-password', '/auth/update-password', '/auth/forgot-password']) {
+        try {
+          const res = await fetch(`${BASE}${endpoint}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          let data = {};
+          try { data = await res.json(); } catch {}
+          if (res.ok) {
+            Alert.alert('Password Reset', 'Your password has been updated. Please sign in with your new password.');
+            setForgotMode(false);
+            setResetEmail('');
+            setResetPassword('');
+            setResetConfirm('');
+            success = true;
+            break;
+          }
+          lastError = data.detail || data.message || `Failed (HTTP ${res.status})`;
+          if (res.status !== 404 && res.status !== 405) break;
+        } catch (e) { lastError = e.message; }
+      }
+      if (!success) throw new Error(lastError);
     } catch (e) {
-      Alert.alert('Forgot Password Failed', e.message);
+      Alert.alert('Reset Failed', e.message);
     } finally { setForgotLoading(false); }
   };
 
@@ -161,19 +187,38 @@ export default function LearnLoginScreen({ onLogin }) {
       <Modal visible={forgotMode} animationType="slide" transparent onRequestClose={() => setForgotMode(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Forgot Password</Text>
-            <Text style={styles.modalText}>Enter your email and we’ll send reset instructions.</Text>
+            <Text style={styles.modalTitle}>Reset Password</Text>
+            <Text style={styles.modalText}>Enter your registered email and choose a new password.</Text>
+            <Text style={styles.label}>Email Address</Text>
             <TextInput
               style={styles.input}
-              value={forgotEmail}
-              onChangeText={setForgotEmail}
+              value={resetEmail}
+              onChangeText={setResetEmail}
               keyboardType="email-address"
               autoCapitalize="none"
-              placeholder="Email address"
+              placeholder="your@email.com"
               placeholderTextColor={colors.textMuted}
             />
-            <TouchableOpacity style={styles.btn} onPress={handleForgotPassword} disabled={forgotLoading}>
-              {forgotLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Send Reset Link</Text>}
+            <Text style={styles.label}>New Password</Text>
+            <TextInput
+              style={styles.input}
+              value={resetPassword}
+              onChangeText={setResetPassword}
+              secureTextEntry
+              placeholder="At least 6 characters"
+              placeholderTextColor={colors.textMuted}
+            />
+            <Text style={styles.label}>Confirm New Password</Text>
+            <TextInput
+              style={styles.input}
+              value={resetConfirm}
+              onChangeText={setResetConfirm}
+              secureTextEntry
+              placeholder="Repeat new password"
+              placeholderTextColor={colors.textMuted}
+            />
+            <TouchableOpacity style={styles.btn} onPress={handleResetPassword} disabled={forgotLoading}>
+              {forgotLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Reset Password</Text>}
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setForgotMode(false)} style={styles.modalCloseBtn}>
               <Text style={styles.modalCloseText}>Cancel</Text>

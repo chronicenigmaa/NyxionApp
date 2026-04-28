@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet,
-  TouchableOpacity, RefreshControl, Modal, ScrollView,
+  TouchableOpacity, RefreshControl, Modal, ScrollView, TextInput,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, fonts } from '../../constants/theme';
@@ -13,10 +13,22 @@ const BASE = 'https://nyxion-learnspace-production.up.railway.app/api/v1';
 
 export default function EventsScreen({ navigation }) {
   const [events, setEvents] = useState([]);
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [selected, setSelected] = useState(null);
+
+  const filteredEvents = useMemo(() => {
+    if (!search.trim()) return events;
+    const q = search.toLowerCase();
+    return events.filter(e =>
+      e.title?.toLowerCase().includes(q) ||
+      e.location?.toLowerCase().includes(q) ||
+      e.organizer?.toLowerCase().includes(q) ||
+      e.description?.toLowerCase().includes(q)
+    );
+  }, [events, search]);
 
   useEffect(() => { load(); }, []);
 
@@ -44,12 +56,20 @@ export default function EventsScreen({ navigation }) {
           <Text style={styles.back}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.title}>Events</Text>
-        <View style={styles.countBadge}><Text style={styles.countText}>{events.length}</Text></View>
+        <View style={styles.countBadge}><Text style={styles.countText}>{filteredEvents.length}</Text></View>
       </View>
 
+      <TextInput
+        style={styles.search}
+        placeholder="Search events..."
+        placeholderTextColor={colors.textMuted}
+        value={search}
+        onChangeText={setSearch}
+      />
+
       <FlatList
-        data={events}
-        keyExtractor={i => i.id}
+        data={filteredEvents}
+        keyExtractor={i => String(i.id)}
         contentContainerStyle={styles.list}
         refreshControl={
           <RefreshControl refreshing={refreshing}
@@ -125,6 +145,7 @@ const styles = StyleSheet.create({
   title: { flex: 1, color: colors.text, fontSize: fonts.sizes.lg, fontWeight: 'bold' },
   countBadge: { backgroundColor: '#9C27B033', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 12 },
   countText: { color: '#9C27B0', fontSize: 13, fontWeight: '600' },
+  search: { marginHorizontal: spacing.lg, marginBottom: spacing.sm, backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 12, color: colors.text, fontSize: 14 },
   list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl },
   card: { flexDirection: 'row', backgroundColor: colors.surface, borderRadius: 14, padding: spacing.md, marginBottom: spacing.sm, borderWidth: 1, borderColor: colors.border },
   datePill: { width: 48, alignItems: 'center', marginRight: spacing.md, backgroundColor: '#9C27B022', borderRadius: 10, padding: 8, justifyContent: 'center' },

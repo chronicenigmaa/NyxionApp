@@ -1,14 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
-  RefreshControl, Modal, ScrollView, TextInput, Alert,
+  RefreshControl, Modal, ScrollView, TextInput, Alert, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { colors, spacing } from '../../constants/theme';
 import LoadingScreen from '../../components/LoadingScreen';
 import ErrorScreen from '../../components/ErrorScreen';
@@ -122,6 +122,7 @@ export default function NotesScreen({ navigation, route }) {
       const candidateUrls = [
         file.download_url,
         file.url,
+        file.file_path,
         `${BASE_URL}/api/v1/notes/${noteId}/files/${file.id}/download`,
         `${BASE_URL}/api/v1/notes/${noteId}/files/${file.id}`,
       ].filter(Boolean);
@@ -134,24 +135,38 @@ export default function NotesScreen({ navigation, route }) {
       for (const url of candidateUrls) {
         try {
           const result = await FileSystem.downloadAsync(url, localUri, {
-            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
           });
-          if (result?.uri) {
+          if (result?.uri && result?.status === 200) {
             downloaded = true;
             break;
           }
+          if (result?.status) lastError = `Server returned ${result.status}`;
         } catch (e) {
           lastError = e.message;
         }
       }
 
-      if (!downloaded) throw new Error(lastError);
-
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(localUri);
-      } else {
-        Alert.alert('Download Complete', `Saved to ${localUri}`);
+      if (downloaded) {
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(localUri, { mimeType: file.mimeType || '*/*' });
+        } else {
+          Alert.alert('Download Complete', `Saved to app documents.`);
+        }
+        return;
       }
+
+      // Fallback: open the best available URL in the system browser
+      const openUrl = candidateUrls[0];
+      if (openUrl) {
+        const supported = await Linking.canOpenURL(openUrl);
+        if (supported) {
+          await Linking.openURL(openUrl);
+          return;
+        }
+      }
+
+      throw new Error(lastError);
     } catch (e) {
       Alert.alert('Download Failed', e.message);
     } finally {

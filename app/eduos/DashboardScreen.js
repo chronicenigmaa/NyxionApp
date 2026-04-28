@@ -36,6 +36,7 @@ export default function DashboardScreen({ user, onLogout, navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const isSuperAdmin = user?.role === 'super_admin';
+  const isTeacher = user?.role === 'teacher';
 
   const fetchJson = async (path) => {
     const token = await AsyncStorage.getItem('token');
@@ -126,8 +127,8 @@ export default function DashboardScreen({ user, onLogout, navigation }) {
         <View style={styles.menuGrid}>
           <MenuItem icon="people-outline" label="Students" color={colors.primary} onPress={() => navigation.navigate('Students')} />
           <MenuItem icon="person-outline" label="Teachers" color={colors.warning} onPress={() => navigation.navigate('Teachers')} />
-          <MenuItem icon="checkmark-circle-outline" label="Attendance" color={colors.success} onPress={() => navigation.navigate('Attendance')} />
-          <MenuItem icon="card-outline" label="Fees" color="#8B5CF6" onPress={() => navigation.navigate('Fees')} />
+          {!isTeacher && <MenuItem icon="checkmark-circle-outline" label="Attendance" color={colors.success} onPress={() => navigation.navigate('Attendance')} />}
+          {!isTeacher && <MenuItem icon="card-outline" label="Fees" color="#8B5CF6" onPress={() => navigation.navigate('Fees')} />}
           <MenuItem icon="megaphone-outline" label="Notices" color="#06B6D4" onPress={() => navigation.navigate('Notices')} />
           <MenuItem icon="bar-chart-outline" label="Results" color="#F43F5E" onPress={() => navigation.navigate('Results')} />
           <MenuItem icon="time-outline" label="Timetable" color="#F97316" onPress={() => navigation.navigate('Timetable')} />

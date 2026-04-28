@@ -12,12 +12,23 @@ export default function AttendanceScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [isTeacher, setIsTeacher] = useState(false);
 
   useEffect(() => { load(); }, []);
 
   const load = async () => {
     setError(null);
     try {
+      const rawUser = await AsyncStorage.getItem('eduos_user');
+      const currentUser = rawUser ? JSON.parse(rawUser) : null;
+      const teacherUser = currentUser?.role === 'teacher';
+      setIsTeacher(teacherUser);
+      if (teacherUser) {
+        setData(null);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
       const token = await AsyncStorage.getItem('token');
       const res = await fetch(`${BASE}/attendance/report`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -31,6 +42,22 @@ export default function AttendanceScreen({ navigation }) {
 
   if (loading) return <LoadingScreen message="Loading attendance..." />;
   if (error) return <ErrorScreen message={error} onRetry={load} />;
+  if (isTeacher) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Text style={styles.back}>← Back</Text>
+          </TouchableOpacity>
+          <Text style={styles.title}>Attendance</Text>
+        </View>
+        <View style={styles.empty}>
+          <Text style={styles.emptyEmoji}>🚫</Text>
+          <Text style={styles.emptyText}>Teacher attendance marking is handled in Learnspace, not EduOS.</Text>
+        </View>
+      </View>
+    );
+  }
 
   const records = data?.records || [];
   const statusColor = s => s === 'present' ? colors.success : s === 'absent' ? colors.error : s === 'late' ? '#FF9800' : colors.textMuted;

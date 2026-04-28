@@ -12,6 +12,7 @@ import SelectField from '../../components/SelectField';
 import { eduos } from '../../services/api';
 import {
   assignStudentToTeacher,
+  hydrateStudentsWithAssignments,
   removeStudentFromTeacher,
   seedNadiaAssignments,
 } from '../../services/demoData';
@@ -104,7 +105,8 @@ export default function StudentsScreen({ navigation }) {
 
       const teacherList = Array.isArray(teachersData) ? teachersData : teachersData.teachers || teachersData.items || [];
       const studentList = Array.isArray(studentsData) ? studentsData : studentsData.students || studentsData.items || [];
-      const { students: seededStudents } = await seedNadiaAssignments(teacherList, studentList);
+      const hydratedStudents = await hydrateStudentsWithAssignments(studentList, teacherList);
+      const { students: seededStudents } = await seedNadiaAssignments(teacherList, hydratedStudents);
 
       setTeachers(teacherList);
       setStudents(seededStudents);
@@ -175,12 +177,13 @@ export default function StudentsScreen({ navigation }) {
         email: selected.email,
       };
       if (selected.teacher_id) payload.teacher_id = Number.isNaN(Number(selected.teacher_id)) ? selected.teacher_id : Number(selected.teacher_id);
-      const data = await eduos.patch(`/students/${selected.id}`, payload);
+      const data = await eduos.put(`/students/${selected.id}`, payload);
 
       await syncStudentAssignment({
         ...selected,
         ...data,
         previous_teacher_id: selected.previous_teacher_id ?? selected.teacher_id_before_edit,
+        teacher_name: selected.teacher_name,
       });
 
       Alert.alert('Updated', `${selected.full_name} updated successfully`);

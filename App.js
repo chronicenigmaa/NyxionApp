@@ -19,6 +19,7 @@ import ResultsScreen from './app/eduos/ResultsScreen';
 import TimetableScreen from './app/eduos/TimetableScreen';
 import AIToolsScreen from './app/eduos/AIToolsScreen';
 import SchoolsScreen from './app/eduos/SchoolsScreen';
+
 import LearnLoginScreen from './app/learnspace/LoginScreen';
 import LearnHomeScreen from './app/learnspace/HomeScreen';
 import AssignmentsScreen from './app/learnspace/AssignmentsScreen';
@@ -28,6 +29,8 @@ import NotesScreen from './app/learnspace/NotesScreen';
 import EventsScreen from './app/learnspace/EventsScreen';
 import LearnAttendanceScreen from './app/learnspace/AttendanceScreen';
 import LearnAIToolsScreen from './app/learnspace/AIToolsScreen';
+import LearnTimetableScreen from './app/learnspace/TimetableScreen';
+import CoursebooksScreen from './app/learnspace/CoursebooksScreen';
 
 const Stack = createStackNavigator();
 const screenOptions = { headerShown: false, gestureEnabled: true, cardStyle: { backgroundColor: '#FFFFFF' } };
@@ -74,6 +77,8 @@ function LearnStack({ route }) {
       <Stack.Screen name="Events" component={EventsScreen} />
       <Stack.Screen name="LearnAttendance" component={LearnAttendanceScreen} />
       <Stack.Screen name="LearnAITools" component={LearnAIToolsScreen} />
+      <Stack.Screen name="LearnTimetable" component={LearnTimetableScreen} />
+      <Stack.Screen name="Coursebooks" component={CoursebooksScreen} />
     </Stack.Navigator>
   );
 }
@@ -90,7 +95,7 @@ export default function App() {
   }, []);
 
   const handleLogout = async (navigation) => {
-    await AsyncStorage.multiRemove(['token', 'learn_token', 'eduos_user']);
+    await AsyncStorage.multiRemove(['token', 'learn_token', 'eduos_user', 'learn_user']);
     setUser(null);
     navigation.reset({ index: 0, routes: [{ name: 'Launcher' }] });
   };

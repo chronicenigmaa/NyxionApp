@@ -15,11 +15,12 @@ const MenuItem = ({ icon, label, color, onPress }) => (
 );
 
 export default function LearnHomeScreen({ user, onNavigate, onLogout }) {
-  const isTeacher = user?.role?.toLowerCase() === 'teacher';
-  const hasAiAccess = isTeacher || user?.package === 'growth' || user?.package === 'enterprise' || user?.ai_enabled;
+  const isTeacher = user?.role?.toLowerCase() === 'teacher' ||
+    user?.role?.toLowerCase() === 'school_admin' ||
+    user?.role?.toLowerCase() === 'super_admin';
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.topBar}>
           <View style={styles.topLeft}>
@@ -38,7 +39,9 @@ export default function LearnHomeScreen({ user, onNavigate, onLogout }) {
           <View style={styles.infoBanner}>
             <View style={styles.infoBannerLeft}>
               <Ionicons name={isTeacher ? 'school-outline' : 'library-outline'} size={16} color={colors.primary} />
-              <Text style={styles.infoText}>{isTeacher ? (user?.assigned_sections?.join(', ') || 'Teacher section') : user.class_name}</Text>
+              <Text style={styles.infoText}>
+                {isTeacher ? (user?.assigned_sections?.join(', ') || 'Teacher section') : user.class_name}
+              </Text>
             </View>
             {user.roll_number && (
               <View style={styles.rollPill}>
@@ -52,29 +55,37 @@ export default function LearnHomeScreen({ user, onNavigate, onLogout }) {
           <View style={styles.teacherBanner}>
             <Text style={styles.teacherBannerTitle}>Teacher workspace</Text>
             <Text style={styles.teacherBannerText}>
-              Start with Student Grades to review your assigned learners, then create assignments, notes, exams, or attendance updates.
+              Create assignments, plan lessons with AI, run exams, mark attendance, and manage coursebooks — all from here.
             </Text>
           </View>
         )}
 
+        {/* Learning Hub */}
         <Text style={styles.sectionTitle}>Learning Hub</Text>
         <View style={styles.menuGrid}>
-          <MenuItem icon="document-text-outline" label="Assignments" color={colors.primary} onPress={() => onNavigate('Assignments')} />
-          <MenuItem icon="stats-chart-outline" label={isTeacher ? 'Student Grades' : 'Grades'} color={colors.success} onPress={() => onNavigate('Grades')} />
-          <MenuItem icon="checkmark-circle-outline" label="Attendance" color="#0EA5E9" onPress={() => onNavigate('LearnAttendance')} />
-          <MenuItem icon="clipboard-outline" label="Exams" color={colors.error} onPress={() => onNavigate('Exams')} />
-          <MenuItem icon="journal-outline" label="Notes" color={colors.warning} onPress={() => onNavigate('Notes')} />
-          <MenuItem icon="calendar-outline" label="Events" color="#8B5CF6" onPress={() => onNavigate('Events')} />
-          {hasAiAccess && <MenuItem icon="sparkles-outline" label="AI Tools" color={colors.primary} onPress={() => onNavigate('LearnAITools')} />}
-          {isTeacher && (
-            <>
-              <MenuItem icon="pencil-outline" label="Create Assignment" color="#0F766E" onPress={() => onNavigate('Assignments', { teacherMode: true })} />
-              <MenuItem icon="reader-outline" label="Publish Notes" color="#7C3AED" onPress={() => onNavigate('Notes', { teacherMode: true })} />
-              <MenuItem icon="school-outline" label="Create Exam" color="#B91C1C" onPress={() => onNavigate('Exams', { teacherMode: true })} />
-              <MenuItem icon="checkmark-done-outline" label="Mark Attendance" color="#0EA5E9" onPress={() => onNavigate('LearnAttendance', { teacherMode: true })} />
-            </>
-          )}
+          <MenuItem icon="document-text-outline" label="Assignments"  color={colors.primary}  onPress={() => onNavigate('Assignments')} />
+          <MenuItem icon="stats-chart-outline"   label={isTeacher ? 'Student Grades' : 'Grades'} color={colors.success} onPress={() => onNavigate('Grades')} />
+          <MenuItem icon="clipboard-outline"     label="Exams"        color={colors.error}    onPress={() => onNavigate('Exams')} />
+          <MenuItem icon="journal-outline"       label="Notes"        color={colors.warning}  onPress={() => onNavigate('Notes')} />
+          <MenuItem icon="calendar-outline"      label="Timetable"    color="#6366f1"         onPress={() => onNavigate('LearnTimetable')} />
+          <MenuItem icon="library-outline"       label="Coursebooks"  color="#0ea5e9"         onPress={() => onNavigate('Coursebooks')} />
+          <MenuItem icon="checkmark-circle-outline" label="Attendance" color="#0EA5E9"        onPress={() => onNavigate('LearnAttendance')} />
+          <MenuItem icon="calendar-number-outline"  label="Events"    color="#8B5CF6"         onPress={() => onNavigate('Events')} />
+          <MenuItem icon="sparkles-outline"      label="AI Tools"     color="#8b5cf6"         onPress={() => onNavigate('LearnAITools')} />
         </View>
+
+        {/* Teacher Quick Actions */}
+        {isTeacher && (
+          <>
+            <Text style={styles.sectionTitle}>Quick Actions</Text>
+            <View style={styles.menuGrid}>
+              <MenuItem icon="pencil-outline"        label="New Assignment"  color="#0F766E" onPress={() => onNavigate('Assignments', { teacherMode: true })} />
+              <MenuItem icon="reader-outline"        label="Publish Notes"   color="#7C3AED" onPress={() => onNavigate('Notes', { teacherMode: true })} />
+              <MenuItem icon="school-outline"        label="Create Exam"     color="#B91C1C" onPress={() => onNavigate('Exams', { teacherMode: true })} />
+              <MenuItem icon="checkmark-done-outline" label="Mark Attendance" color="#0EA5E9" onPress={() => onNavigate('LearnAttendance', { teacherMode: true })} />
+            </View>
+          </>
+        )}
 
         <View style={{ height: spacing.xl }} />
       </ScrollView>
